@@ -1,5 +1,5 @@
-import requests
 import json
+from nailgun.consts import CLUSTER_STATUSES
 import requests
 import yaml
 import time
@@ -9,16 +9,12 @@ FUEL_BASE_URL = "localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
 
 
-def load_config(config_file_name):
-    stream = open(config_file_name, 'r')
-    config = yaml.load(stream)
-
-config = load_config(config_file_name)
-
 def api_request(url, method, data=None):
     url = FUEL_BASE_URL + url
+
+    if data is None:
+        data = ''
     data_str = json.dumps(data)
-    response = {}
 
     if method == 'GET':
         response = requests.get(url)
@@ -31,6 +27,7 @@ def api_request(url, method, data=None):
 
     return json.load(response)
 
+
 def parse_config():
     with open(CONFIG_PATH) as f:
         config_data = f.read()
@@ -39,39 +36,72 @@ def parse_config():
 
 def create_cluster():
     pass
-def create_cluster(config):
 
-    data = {}
-    # read config info from config to data
-    response = api_request(FUEL_BASE_URL + '/clusters','POST',data)
+
+def create_cluster(config):
+    response = api_request('/api/clusters', 'POST')
 
     return response['id']
 
-def get_unallocated_nodes(num_nodes):
-    nodes_allocated = 0
-    timeout = 10
 
-    while nodes_allocated < num_nodes and timeout > 0:
-        response = api_request(FUEL_BASE_URL + '/nodes','GET')
-        timeout += 1
+def get_unallocated_nodes(num_nodes, timeout):
+    nodes_allocated = 0
+
+    while timeout > 0:
+        response = api_request('/api/nodes','GET')
+        timeout -= 1
 
         nodes_allocated = len([x for x in response if x['cluster'] is None])
+        if len(nodes_allocated) >= num_nodes:
+            return nodes_allocated
         time.sleep(1)
 
-    return response
+    raise Exception('Timeout exception')
 
 
-
-
-[{"id":2,"cluster_id":6,"pending_roles":["controller"],"pending_addition":true}]
 def add_node_to_cluster(cluster_id, node_id, roles):
     data = {}
     data['pending_roles'] = roles
-    api_request(FUEL_BASE_URL + '/api/nodes','PUT',data)
+    data['cluster_id']= cluster_id
+    data['id'] = node_id
+    data['pending_addition'] = True
+
+    api_request('/api/nodes','PUT', data)
 
 
-def deploy():
-    pass
+def deploy(cluster_id,timeout):
+    api_request('/api/cluster/' + str(cluster_id) + '/changes','PUT')
+
+    response  = api_request('/api/tasks?cluster_id=' + str(cluster_id), 'GET')
+
+    t = timeout
+    while t > 0:
+        if response['status'] == 'operational':
+            break
+        time.sleep(1)
+        t -= 1
+    else:
+        raise Exception('Cluster deploy error')
+
+    t = timeout
+    response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
+
+    while timeout > 0:
+        flag = True
+
+        for task in response:
+            if response['status'] != 'ready':
+                flag = False
+
+                if response['status'] == 'error':
+                    raise Exception('Task execution error')
+        if flag:
+            break
+        time.sleep(1)
+        t -= 1
+    else:
+        raise Exception('Tasks timeout error')
+
 
 
 def main():
@@ -80,7 +110,8 @@ def main():
     cluster_id = create_cluster()
 
     num_nodes = config.get('NODES_NUMBER')
-    nodes = get_unallocated_nodes(num_nodes)
+    timeout = config.get('TIMEOUT')
+    nodes = get_unallocated_nodes(num_nodes,timeout)
 
     num_controllers = config.get('NUM_CONTROLLERS')
     num_storages = config.get('NUM_STORAGES')

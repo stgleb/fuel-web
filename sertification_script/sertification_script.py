@@ -1,23 +1,35 @@
+import requests
 import json
 import requests
 import yaml
+import time
+
 
 FUEL_BASE_URL = "localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
 
 
+def load_config(config_file_name):
+    stream = open(config_file_name, 'r')
+    config = yaml.load(stream)
+
+config = load_config(config_file_name)
+
 def api_request(url, method, data=None):
     url = FUEL_BASE_URL + url
     data_str = json.dumps(data)
+    response = {}
+
     if method == 'GET':
-        requests.get(url)
+        response = requests.get(url)
     elif method == 'POST':
-        requests.post(url, data_str)
+        response = requests.post(url, data_str)
     elif method == 'PUT':
-        requests.put(url, data_str)
+        response = requests.put(url, data_str)
     else:
         raise Exception("Unknown method: %s" % method)
 
+    return json.load(response)
 
 def parse_config():
     with open(CONFIG_PATH) as f:
@@ -27,14 +39,35 @@ def parse_config():
 
 def create_cluster():
     pass
+def create_cluster(config):
+
+    data = {}
+    # read config info from config to data
+    response = api_request(FUEL_BASE_URL + '/clusters','POST',data)
+
+    return response['id']
+
+def get_unallocated_nodes(num_nodes):
+    nodes_allocated = 0
+    timeout = 10
+
+    while nodes_allocated < num_nodes and timeout > 0:
+        response = api_request(FUEL_BASE_URL + '/nodes','GET')
+        timeout += 1
+
+        nodes_allocated = len([x for x in response if x['cluster'] is None])
+        time.sleep(1)
+
+    return response
 
 
-def get_unallocated_nodes():
-    pass
 
 
-def add_node_to_cluster():
-    pass
+[{"id":2,"cluster_id":6,"pending_roles":["controller"],"pending_addition":true}]
+def add_node_to_cluster(cluster_id, node_id, roles):
+    data = {}
+    data['pending_roles'] = roles
+    api_request(FUEL_BASE_URL + '/api/nodes','PUT',data)
 
 
 def deploy():

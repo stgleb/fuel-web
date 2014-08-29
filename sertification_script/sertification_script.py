@@ -1,5 +1,4 @@
 import json
-from nailgun.consts import CLUSTER_STATUSES
 import requests
 import yaml
 import time
@@ -35,10 +34,6 @@ def parse_config():
 
 
 def create_cluster():
-    pass
-
-
-def create_cluster(config):
     response = api_request('/api/clusters', 'POST')
 
     return response['id']
@@ -48,12 +43,12 @@ def get_unallocated_nodes(num_nodes, timeout):
     nodes_allocated = 0
 
     while timeout > 0:
-        response = api_request('/api/nodes','GET')
+        response = api_request('/api/nodes', 'GET')
         timeout -= 1
 
         nodes_allocated = len([x for x in response if x['cluster'] is None])
-        if len(nodes_allocated) >= num_nodes:
-            return nodes_allocated
+        if nodes_allocated >= num_nodes:
+            return response
         time.sleep(1)
 
     raise Exception('Timeout exception')
@@ -66,13 +61,13 @@ def add_node_to_cluster(cluster_id, node_id, roles):
     data['id'] = node_id
     data['pending_addition'] = True
 
-    api_request('/api/nodes','PUT', data)
+    api_request('/api/nodes', 'PUT', data)
 
 
-def deploy(cluster_id,timeout):
-    api_request('/api/cluster/' + str(cluster_id) + '/changes','PUT')
+def deploy(cluster_id, timeout):
+    api_request('/api/cluster/' + str(cluster_id) + '/changes', 'PUT')
 
-    response  = api_request('/api/tasks?cluster_id=' + str(cluster_id), 'GET')
+    response = api_request('/api/tasks?cluster_id=' + str(cluster_id), 'GET')
 
     t = timeout
     while t > 0:
@@ -90,10 +85,10 @@ def deploy(cluster_id,timeout):
         flag = True
 
         for task in response:
-            if response['status'] != 'ready':
+            if task['status'] != 'ready':
                 flag = False
 
-                if response['status'] == 'error':
+                if task['status'] == 'error':
                     raise Exception('Task execution error')
         if flag:
             break
@@ -101,7 +96,6 @@ def deploy(cluster_id,timeout):
         t -= 1
     else:
         raise Exception('Tasks timeout error')
-
 
 
 def main():

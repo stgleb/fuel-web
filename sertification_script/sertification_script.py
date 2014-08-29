@@ -8,7 +8,7 @@ FUEL_BASE_URL = "localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
 
 
-def api_request(url, method, data=None):
+def api_request(url, method='GET', data=None):
     url = FUEL_BASE_URL + url
 
     if data is None:
@@ -24,7 +24,7 @@ def api_request(url, method, data=None):
     else:
         raise Exception("Unknown method: %s" % method)
 
-    return json.load(response)
+    return json.loads(response)
 
 
 def parse_config():
@@ -98,14 +98,37 @@ def deploy(cluster_id, timeout):
         raise Exception('Tasks timeout error')
 
 
+def run_all_tests(cluster_id, timeout):
+    # Get all available tests
+    testsets = api_request('/ostf/testsets/%s' % cluster_id)
+    test_data = {}
+    for testset in testsets:
+        test_data.update(
+            {'testset': testset['id'],
+             'metadata': {'cluster_id': cluster_id}})
+    # Run all available tests
+    testrun = api_request('/ostf/testruns', 'POST', data=test_data)
+    started_at = time.time()
+    while 1:
+        if time.time() - started_at < timeout:
+            testrun = api_request('ostf/testruns/%s' % testrun['id'])
+            if testrun['status'] == 'finished':
+                return testrun
+        else:
+            raise Exception('Timeout error')
+
+
 def main():
     config = parse_config()
 
     cluster_id = create_cluster()
 
     num_nodes = config.get('NODES_NUMBER')
-    timeout = config.get('TIMEOUT')
-    nodes = get_unallocated_nodes(num_nodes,timeout)
+    nodes_discover_timeout = config.get('NODES_DISCOVERY_TIMEOUT')
+    deploy_timeout = config.get('DEPLOY_TIMEOUT')
+    testrun_timeout = config.get('TESTRUN_TIMEOUT')
+
+    nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
 
     num_controllers = config.get('NUM_CONTROLLERS')
     num_storages = config.get('NUM_STORAGES')
@@ -122,11 +145,9 @@ def main():
     for node_id, role in nodes_roles_mapping:
         add_node_to_cluster(cluster_id, node_id, roles=[role])
 
-    deploy(cluster_id)
+    deploy(cluster_id, deploy_timeout)
 
-    # TODO: Wait until deploy finished;
-
-    # TODO: run tests
+    results = run_all_tests(cluster_id, testrun_timeout)
 
     # TODO: get test results
 

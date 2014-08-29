@@ -24,7 +24,10 @@ def api_request(url, method='GET', data=None):
     else:
         raise Exception("Unknown method: %s" % method)
 
-    return json.loads(response)
+    if response.status_code in range(200, 400):
+            return json.loads(response)
+    else:
+        raise Exception(response.status_code + ' error occured')
 
 
 def parse_config():

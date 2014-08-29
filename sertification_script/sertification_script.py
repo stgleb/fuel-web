@@ -9,6 +9,7 @@ import time
 FUEL_BASE_URL = "http://10.20.0.2:8000"
 CONFIG_PATH = "config.yaml"
 
+
 def api_request(url, method='GET', data=None):
     url = FUEL_BASE_URL + url
 
@@ -28,7 +29,8 @@ def api_request(url, method='GET', data=None):
     if response.status_code in range(200, 400):
             return json.loads(response.text)
     else:
-        raise Exception(str(response.status_code) + ' error has occured' + str(response))
+        raise Exception(str(response.status_code) +
+                        ' error has occured' + response.text)
 
 
 def parse_config():
@@ -38,10 +40,12 @@ def parse_config():
 
 
 def create_cluster(config):
+    cluster_name = config.get('NAME')
+    print "Creating new cluster %s" % cluster_name
     data = {}
     data['nodes'] = []
     data['tasks'] = []
-    data['name'] = config.get('NAME')
+    data['name'] = cluster_name
     data['release'] = config.get('RELEASE')
     data['mode'] = config.get('DEPLOYMENT_MODE')
     data['net_provider'] = config.get('NET_PROVIDER')
@@ -51,8 +55,7 @@ def create_cluster(config):
 
 
 def get_unallocated_nodes(num_nodes, timeout):
-    nodes_allocated = 0
-
+    print "Waiting for %s nodes to be discovered..." % num_nodes
     while timeout > 0:
         response = api_request('/api/nodes', 'GET')
         timeout -= 1
@@ -68,18 +71,18 @@ def get_unallocated_nodes(num_nodes, timeout):
 def add_node_to_cluster(cluster_id, node_id, roles):
     data = {}
     data['pending_roles'] = roles
-    data['cluster_id']= cluster_id
+    data['cluster_id'] = cluster_id
     data['id'] = node_id
     data['pending_addition'] = True
+    print "Adding node %s to cluster..." % node_id
 
     api_request('/api/nodes', 'PUT', [data])
 
 
 def deploy(cluster_id, timeout):
-    api_request('/api/cluster/' + str(cluster_id) + '/changes', 'PUT')
-
-    response = api_request('/api/tasks?cluster_id=' + str(cluster_id), 'GET')
-
+    print "Starting deploy..."
+    response = api_request('/api/clusters/' + str(cluster_id) + '/changes',
+                           'PUT')
     t = timeout
     while t > 0:
         if response['status'] == 'operational':
@@ -111,6 +114,7 @@ def deploy(cluster_id, timeout):
 
 def run_all_tests(cluster_id, timeout):
     # Get all available tests
+    print "Running tests..."
     testsets = api_request('/ostf/testsets/%s' % cluster_id)
     test_data = {}
     for testset in testsets:
@@ -130,8 +134,6 @@ def run_all_tests(cluster_id, timeout):
 
 
 def main():
-    cluster_id = 0
-
     config = parse_config()
 
     cluster_id = create_cluster(config)

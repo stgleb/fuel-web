@@ -4,9 +4,10 @@ import yaml
 import time
 
 
-FUEL_BASE_URL = "localhost:8000"
-CONFIG_PATH = "/etc/sert-script/config.yaml"
-
+# FUEL_BASE_URL = "http://localhost:8000"
+#CONFIG_PATH = "/etc/sert-script/config.yaml"
+FUEL_BASE_URL = "http://10.20.0.2:8000"
+CONFIG_PATH = "config.yaml"
 
 def api_request(url, method='GET', data=None):
     url = FUEL_BASE_URL + url
@@ -25,9 +26,9 @@ def api_request(url, method='GET', data=None):
         raise Exception("Unknown method: %s" % method)
 
     if response.status_code in range(200, 400):
-            return json.loads(response)
+            return json.loads(response.text)
     else:
-        raise Exception(response.status_code + ' error occured')
+        raise Exception(str(response.status_code) + ' error has occured' + str(response))
 
 
 def parse_config():
@@ -36,8 +37,15 @@ def parse_config():
     return yaml.load(config_data)
 
 
-def create_cluster():
-    response = api_request('/api/clusters', 'POST')
+def create_cluster(config):
+    data = {}
+    data['nodes'] = []
+    data['tasks'] = []
+    data['name'] = config.get('NAME')
+    data['release'] = config.get('RELEASE')
+    data['mode'] = config.get('DEPLOYMENT_MODE')
+    data['net_provider'] = config.get('NET_PROVIDER')
+    response = api_request('/api/clusters', 'POST', data)
 
     return response['id']
 
@@ -64,7 +72,7 @@ def add_node_to_cluster(cluster_id, node_id, roles):
     data['id'] = node_id
     data['pending_addition'] = True
 
-    api_request('/api/nodes', 'PUT', data)
+    api_request('/api/nodes', 'PUT', [data])
 
 
 def deploy(cluster_id, timeout):
@@ -122,14 +130,16 @@ def run_all_tests(cluster_id, timeout):
 
 
 def main():
+    cluster_id = 0
+
     config = parse_config()
 
-    cluster_id = create_cluster()
+    cluster_id = create_cluster(config)
 
     num_nodes = config.get('NODES_NUMBER')
     nodes_discover_timeout = config.get('NODES_DISCOVERY_TIMEOUT')
     deploy_timeout = config.get('DEPLOY_TIMEOUT')
-    testrun_timeout = config.get('TESTRUN_TIMEOUT')
+    test_run_timeout = config.get('TESTRUN_TIMEOUT')
 
     nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
 
@@ -150,9 +160,11 @@ def main():
 
     deploy(cluster_id, deploy_timeout)
 
-    results = run_all_tests(cluster_id, testrun_timeout)
+    results = run_all_tests(cluster_id, test_run_timeout)
 
     # TODO: get test results
+
+    # TODO: remove deletion
 
 if __name__ == "__main__":
     main()

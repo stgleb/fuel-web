@@ -1,18 +1,16 @@
 import json
 import requests
-import yaml
+import sys
 import time
+import yaml
 
 
-# FUEL_BASE_URL = "http://localhost:8000"
-#CONFIG_PATH = "/etc/sert-script/config.yaml"
-FUEL_BASE_URL = "http://10.20.0.2:8000"
-CONFIG_PATH = "config.yaml"
+FUEL_BASE_URL = "http://localhost:8000"
+CONFIG_PATH = "/etc/sert-script/config.yaml"
 
 
-def api_request(url, method='GET', data=None):
+def api_request(url, method='GET', data=None, headers=None):
     url = FUEL_BASE_URL + url
-
     if data is None:
         data = ''
     data_str = json.dumps(data)
@@ -20,9 +18,9 @@ def api_request(url, method='GET', data=None):
     if method == 'GET':
         response = requests.get(url)
     elif method == 'POST':
-        response = requests.post(url, data_str)
+        response = requests.post(url, data_str, headers=headers)
     elif method == 'PUT':
-        response = requests.put(url, data_str)
+        response = requests.put(url, data_str, headers=headers)
     else:
         raise Exception("Unknown method: %s" % method)
 
@@ -81,16 +79,18 @@ def add_node_to_cluster(cluster_id, node_id, roles):
 
 def deploy(cluster_id, timeout):
     print "Starting deploy..."
-    response = api_request('/api/clusters/' + str(cluster_id) + '/changes',
-                           'PUT')
+    api_request('/api/clusters/' + str(cluster_id) + '/changes',
+                'PUT')
     t = timeout
+
     while t > 0:
-        if response['status'] == 'operational':
+        cluster = api_request('/api/clusters/' + str(cluster_id))
+        if cluster['status'] == 'operational':
             break
         time.sleep(1)
         t -= 1
     else:
-        raise Exception('Cluster deploy error')
+        raise Exception('Cluster deploy timeout error')
 
     t = timeout
     response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
@@ -115,22 +115,33 @@ def deploy(cluster_id, timeout):
 def run_all_tests(cluster_id, timeout):
     # Get all available tests
     print "Running tests..."
-    testsets = api_request('/ostf/testsets/%s' % cluster_id)
-    test_data = {}
+    testsets = api_request('/ostf/testsets/%s' % str(cluster_id))
+    test_data = []
     for testset in testsets:
-        test_data.update(
+        test_data.append(
             {'testset': testset['id'],
+             'tests': [],
              'metadata': {'cluster_id': cluster_id}})
-    # Run all available tests
-    testrun = api_request('/ostf/testruns', 'POST', data=test_data)
+        # Run all available tests
+
+    headers = {'Content-type': 'application/json'}
+    testruns = api_request('/ostf/testruns', 'POST', data=test_data,
+                           headers=headers)
     started_at = time.time()
-    while 1:
+    finished_testruns = []
+    while testruns:
         if time.time() - started_at < timeout:
-            testrun = api_request('ostf/testruns/%s' % testrun['id'])
-            if testrun['status'] == 'finished':
-                return testrun
+            for testrun in testruns:
+                testrun_resp = api_request('/ostf/testruns/%s' % testrun['id'])
+                if testrun_resp['status'] != 'finished':
+                    time.sleep(5)
+                    continue
+                else:
+                    finished_testruns.append(testrun_resp)
+                    testruns.remove(testrun)
         else:
             raise Exception('Timeout error')
+    return finished_testruns
 
 
 def main():
@@ -153,7 +164,7 @@ def main():
     nodes_roles_mapping.extend(
         [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
     nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'storage') for _ in range(num_storages)])
+        [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
     nodes_roles_mapping.extend(
         [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
 
@@ -161,12 +172,25 @@ def main():
         add_node_to_cluster(cluster_id, node_id, roles=[role])
 
     deploy(cluster_id, deploy_timeout)
-
     results = run_all_tests(cluster_id, test_run_timeout)
 
-    # TODO: get test results
+    tests = []
+    for testset in results:
+        tests.extend(testset['tests'])
+
+    failed_tests = [test for test in tests if test['status'] == 'failure']
+    for test in failed_tests:
+        print test['name']
+        print " "*10 + 'Failure message: ' + test['message']
 
     # TODO: remove deletion
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        sys.exit(0)
+    except Exception as e:
+        print "Script failed"
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

@@ -1,12 +1,20 @@
 import json
 import requests
+import smtplib
 import sys
 import time
 import yaml
 
+from email.mime.text import MIMEText
+
 
 FUEL_BASE_URL = "http://localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
+SMTP_SERVER = 'smtp.gmail.com'
+MAIL_TO = "email@gmail.com"
+MAIL_FROM = "email@gmail.com"
+LOGIN = "Example"
+PASS = "Pass"
 
 
 def api_request(url, method='GET', data=None, headers=None):
@@ -144,6 +152,27 @@ def run_all_tests(cluster_id, timeout):
     return finished_testruns
 
 
+def send_results(tests):
+    server = smtplib.SMTP(SMTP_SERVER, 587)
+    server.starttls()
+    server.login(LOGIN, PASS)
+
+    # Form message body
+    failed_tests = [test for test in tests if test['status'] == 'failure']
+    msg = '\n'.join([test['name'] + '\n        ' + test['message']
+                     for test in failed_tests])
+
+    msg = MIMEText(msg)
+    msg['Subject'] = 'Test Results'
+    msg['To'] = MAIL_TO
+    msg['From'] = MAIL_FROM
+
+    print "Sending results by email..."
+    server.sendmail(MAIL_FROM, [MAIL_TO],
+                    msg.as_string())
+    server.quit()
+
+
 def main():
     config = parse_config()
 
@@ -182,6 +211,8 @@ def main():
     for test in failed_tests:
         print test['name']
         print " "*10 + 'Failure message: ' + test['message']
+
+    send_results(tests)
 
     # TODO: remove deletion
 

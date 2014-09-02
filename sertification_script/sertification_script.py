@@ -1,24 +1,22 @@
-import json
-import requests
-import smtplib
 import sys
+import json
 import time
-import yaml
+import glob
+import os.path
+import smtplib
 import logging
 
 from email.mime.text import MIMEText
 
+import yaml
+import requests
+
 
 FUEL_BASE_URL = "http://localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
-SMTP_SERVER = 'smtp.gmail.com'
-MAIL_TO = "email@gmail.com"
-MAIL_FROM = "email@gmail.com"
-LOGIN = "Example"
-PASS = "Pass"
 
-logger = logging.getLogger('sertification script logger')
-logger.setLevel(10)
+logger = logging.getLogger('SERT')
+logger.setLevel(logging.DEBUG)
 
 
 def api_request(url, method='GET', data=None, headers=None):
@@ -47,21 +45,6 @@ def parse_config():
     with open(CONFIG_PATH) as f:
         config_data = f.read()
     return yaml.load(config_data)
-
-
-def create_cluster(config):
-    cluster_name = config.get('NAME')
-    print "Creating new cluster %s" % cluster_name
-    data = {}
-    data['nodes'] = []
-    data['tasks'] = []
-    data['name'] = cluster_name
-    data['release'] = config.get('RELEASE')
-    data['mode'] = config.get('DEPLOYMENT_MODE')
-    data['net_provider'] = config.get('NET_PROVIDER')
-    response = api_request('/api/clusters', 'POST', data)
-
-    return response['id']
 
 
 def get_unallocated_nodes(num_nodes, timeout):
@@ -156,10 +139,10 @@ def run_all_tests(cluster_id, timeout):
     return finished_testruns
 
 
-def send_results(tests):
-    server = smtplib.SMTP(SMTP_SERVER, 587)
+def send_results(mail_config, tests):
+    server = smtplib.SMTP(mail_config['smtp_server'], 587)
     server.starttls()
-    server.login(LOGIN, PASS)
+    server.login(mail_config['login'], mail_config['password'])
 
     # Form message body
     failed_tests = [test for test in tests if test['status'] == 'failure']
@@ -168,44 +151,80 @@ def send_results(tests):
 
     msg = MIMEText(msg)
     msg['Subject'] = 'Test Results'
-    msg['To'] = MAIL_TO
-    msg['From'] = MAIL_FROM
+    msg['To'] = mail_config['mail_to']
+    msg['From'] = mail_config['mail_from']
 
     logger.log("Sending results by email...")
-    server.sendmail(MAIL_FROM, [MAIL_TO],
+    server.sendmail(mail_config['mail_from'],
+                    [mail_config['mail_to']],
                     msg.as_string())
     server.quit()
 
 
+def load_all_clusters(path):
+    res = {}
+    for fname in glob.glob(os.path.join(path, "*.yaml")):
+        try:
+            cluster = yaml.load(open(fname).read())
+            res[cluster['name']] = cluster
+        except Exception as exc:
+            msg = "Failed to load cluster from file {}: {}".format(
+                fname, exc)
+            logger.error(msg)
+    return res
+
+
+def create_empty_cluster(name, cluster):
+    print "Creating new cluster %s" % name
+    data = {}
+    data['nodes'] = []
+    data['tasks'] = []
+    data['name'] = name
+    data['release'] = cluster['release']
+    data['mode'] = cluster['deployment_mode']
+    data['net_provider'] = cluster['net_provider']
+    response = api_request('/api/clusters', 'POST', data)
+    return response['id']
+
+
+def deploy_cluster(name, cluster):
+    cluster_id = create_empty_cluster(name, cluster)
+
+    num_controllers = cluster['num_controllers']
+    num_computes = cluster['num_computes']
+    num_storages = cluster['num_storage']
+
+    num_nodes = num_controllers + num_computes + num_storages
+
+    nodes_discover_timeout = cluster.get('nodes_discovery_timeout', 3600)
+    deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
+
+    nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
+
+    nodes_roles_mapping = []
+
+    nodes_roles_mapping.extend(
+        [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
+
+    nodes_roles_mapping.extend(
+        [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
+
+    nodes_roles_mapping.extend(
+        [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
+
+    for node_id, role in nodes_roles_mapping:
+        add_node_to_cluster(cluster_id, node_id, roles=[role])
+
+    deploy(cluster_id, deploy_timeout)
+    return cluster_id
+
+
 def main():
-    config_file = parse_config()
+    config = parse_config()
+    test_run_timeout = config.get('testrun_timeout', 3600)
 
-    for config in config_file['CLUSTERS']:
-        cluster_id = create_cluster(config)
-
-        num_nodes = config.get('NODES_NUMBER')
-        nodes_discover_timeout = config.get('NODES_DISCOVERY_TIMEOUT')
-        deploy_timeout = config.get('DEPLOY_TIMEOUT')
-        test_run_timeout = config.get('TESTRUN_TIMEOUT')
-
-        nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
-
-        num_controllers = config.get('NUM_CONTROLLERS')
-        num_storages = config.get('NUM_STORAGES')
-        num_computes = config.get('NUM_COMPUTES')
-
-        nodes_roles_mapping = []
-        nodes_roles_mapping.extend(
-            [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
-        nodes_roles_mapping.extend(
-            [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
-        nodes_roles_mapping.extend(
-            [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
-
-        for node_id, role in nodes_roles_mapping:
-            add_node_to_cluster(cluster_id, node_id, roles=[role])
-
-        deploy(cluster_id, deploy_timeout)
+    for cluster in config['clusters']:
+        cluster_id = deploy_cluster(config['name'], cluster)
         results = run_all_tests(cluster_id, test_run_timeout)
 
         tests = []
@@ -217,9 +236,9 @@ def main():
             logger.log(test['name'])
             logger.log(" "*10 + 'Failure message: ' + test['message'])
 
-        send_results(tests)
+        send_results(tests, config['report']['mail'])
 
-        # TODO: remove deletion
+        # TODO: cluster deletion
 
 if __name__ == "__main__":
     try:

@@ -1,0 +1,8 @@
+name: simple
+release: 1
+deployment_mode: "ha_compact"
+num_controllers: 1
+num_computes: 1
+num_storage: 1
+net_provider: "nova_network"
+timeout: 3600

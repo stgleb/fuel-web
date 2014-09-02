@@ -1,24 +1,19 @@
-FUEL_API:
-  URL: "http://localhost:8000"
-CLUSTERS:
-  SIMPLE:
-    NODES_NUMBER: 3
-    RELEASE: 1
-    DEPLOYMENT_MODE: "ha_compact"
-    NUM_CONTROLLERS: 1
-    NUM_COMPUTES: 1
-    NUM_STORAGES: 1
-    DEPLOY_TIMEOUT: 3600
-    NODES_DISCOVERY_TIMEOUT: 600
-    TESTRUN_TIMEOUT: 3600
-    NET_PROVIDER: "nova_network"
-    NAME: "sert-cluster"
+fuel_api:
+  url: "http://localhost:8000"
 
-REPORT:
-  MAIL:
-    SMTP_SERVER: "smtp.gmail.com"
-    SMTP_PORT: 587
-    MAIL_TO: "email@gmail.com"
-    MAIL_FROM: "email@gmail.com"
-    LOGIN: "Example"
-    PASS: "Pass"
+tests:
+    config_directory: clusters
+    test_simple:
+        cluster: simple
+        test: oscf
+
+deploy_timeout: 3600
+discovery_timeout: 600
+name: "sert-cluster"
+
+report:
+  mail:
+    smtp_server: "smtp.gmail.com"
+    mail_to: "lht-sert-results@mirantis.com"
+    mail_from: "lht-sert-results@mirantis.com"
+    login: "lht-sert-results@mirantis.com"

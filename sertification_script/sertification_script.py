@@ -1,4 +1,3 @@
-import json
 import time
 import glob
 import os.path
@@ -9,7 +8,7 @@ from optparse import OptionParser
 from email.mime.text import MIMEText
 
 import yaml
-import requests
+from fuel_rest_api import api_request, set_fuel_base_url
 
 
 FUEL_BASE_URL = "http://localhost:8000"
@@ -17,28 +16,6 @@ CONFIG_PATH = "/etc/sert-script/config.yaml"
 
 logger = logging.getLogger('SERT')
 logger.setLevel(logging.DEBUG)
-
-
-def api_request(url, method='GET', data=None, headers=None):
-    url = FUEL_BASE_URL + url
-    if data is None:
-        data = ''
-    data_str = json.dumps(data)
-
-    if method == 'GET':
-        response = requests.get(url)
-    elif method == 'POST':
-        response = requests.post(url, data_str, headers=headers)
-    elif method == 'PUT':
-        response = requests.put(url, data_str, headers=headers)
-    else:
-        raise Exception("Unknown method: %s" % method)
-
-    if response.status_code in range(200, 400):
-            return json.loads(response.text)
-    else:
-        raise Exception(str(response.status_code) +
-                        ' error has occured' + response.text)
 
 
 def parse_config():
@@ -196,6 +173,10 @@ def create_empty_cluster(name, cluster):
     return response['id']
 
 
+def delete_cluster(cluster_id):
+    api_request('/api/clusters/' + str(cluster_id), 'DELETE')
+
+
 def deploy_cluster(name, cluster):
     cluster_id = create_empty_cluster(name, cluster)
 
@@ -233,6 +214,7 @@ def main():
     command_line = parse_command_line()
     merge_config(config, command_line)
 
+    set_fuel_base_url(config['fuel_api'].get('url',))
     test_run_timeout = config.get('testrun_timeout', 3600)
 
     for cluster in config['clusters']:

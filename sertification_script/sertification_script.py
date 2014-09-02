@@ -4,6 +4,7 @@ import smtplib
 import sys
 import time
 import yaml
+import logging
 
 from email.mime.text import MIMEText
 
@@ -15,6 +16,9 @@ MAIL_TO = "email@gmail.com"
 MAIL_FROM = "email@gmail.com"
 LOGIN = "Example"
 PASS = "Pass"
+
+logger = logging.getLogger('sertification script logger')
+logger.setLevel(10)
 
 
 def api_request(url, method='GET', data=None, headers=None):
@@ -61,7 +65,7 @@ def create_cluster(config):
 
 
 def get_unallocated_nodes(num_nodes, timeout):
-    print "Waiting for %s nodes to be discovered..." % num_nodes
+    logger.log("Waiting for %s nodes to be discovered..." % num_nodes)
     while timeout > 0:
         response = api_request('/api/nodes', 'GET')
         timeout -= 1
@@ -80,13 +84,13 @@ def add_node_to_cluster(cluster_id, node_id, roles):
     data['cluster_id'] = cluster_id
     data['id'] = node_id
     data['pending_addition'] = True
-    print "Adding node %s to cluster..." % node_id
+    logger.log("Adding node %s to cluster..." % node_id)
 
     api_request('/api/nodes', 'PUT', [data])
 
 
 def deploy(cluster_id, timeout):
-    print "Starting deploy..."
+    logger.log("Starting deploy...")
     api_request('/api/clusters/' + str(cluster_id) + '/changes',
                 'PUT')
     t = timeout
@@ -122,7 +126,7 @@ def deploy(cluster_id, timeout):
 
 def run_all_tests(cluster_id, timeout):
     # Get all available tests
-    print "Running tests..."
+    logger.log("Running tests...")
     testsets = api_request('/ostf/testsets/%s' % str(cluster_id))
     test_data = []
     for testset in testsets:
@@ -167,61 +171,64 @@ def send_results(tests):
     msg['To'] = MAIL_TO
     msg['From'] = MAIL_FROM
 
-    print "Sending results by email..."
+    logger.log("Sending results by email...")
     server.sendmail(MAIL_FROM, [MAIL_TO],
                     msg.as_string())
     server.quit()
 
 
 def main():
-    config = parse_config()
+    config_file = parse_config()
 
-    cluster_id = create_cluster(config)
+    for config in config_file['CLUSTERS']:
+        cluster_id = create_cluster(config)
 
-    num_nodes = config.get('NODES_NUMBER')
-    nodes_discover_timeout = config.get('NODES_DISCOVERY_TIMEOUT')
-    deploy_timeout = config.get('DEPLOY_TIMEOUT')
-    test_run_timeout = config.get('TESTRUN_TIMEOUT')
+        num_nodes = config.get('NODES_NUMBER')
+        nodes_discover_timeout = config.get('NODES_DISCOVERY_TIMEOUT')
+        deploy_timeout = config.get('DEPLOY_TIMEOUT')
+        test_run_timeout = config.get('TESTRUN_TIMEOUT')
 
-    nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
+        nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
 
-    num_controllers = config.get('NUM_CONTROLLERS')
-    num_storages = config.get('NUM_STORAGES')
-    num_computes = config.get('NUM_COMPUTES')
+        num_controllers = config.get('NUM_CONTROLLERS')
+        num_storages = config.get('NUM_STORAGES')
+        num_computes = config.get('NUM_COMPUTES')
 
-    nodes_roles_mapping = []
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
+        nodes_roles_mapping = []
+        nodes_roles_mapping.extend(
+            [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
+        nodes_roles_mapping.extend(
+            [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
+        nodes_roles_mapping.extend(
+            [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
 
-    for node_id, role in nodes_roles_mapping:
-        add_node_to_cluster(cluster_id, node_id, roles=[role])
+        for node_id, role in nodes_roles_mapping:
+            add_node_to_cluster(cluster_id, node_id, roles=[role])
 
-    deploy(cluster_id, deploy_timeout)
-    results = run_all_tests(cluster_id, test_run_timeout)
+        deploy(cluster_id, deploy_timeout)
+        results = run_all_tests(cluster_id, test_run_timeout)
 
-    tests = []
-    for testset in results:
-        tests.extend(testset['tests'])
+        tests = []
+        for testset in results:
+            tests.extend(testset['tests'])
 
-    failed_tests = [test for test in tests if test['status'] == 'failure']
-    for test in failed_tests:
-        print test['name']
-        print " "*10 + 'Failure message: ' + test['message']
+        failed_tests = [test for test in tests if test['status'] == 'failure']
+        for test in failed_tests:
+            logger.log(test['name'])
+            logger.log(" "*10 + 'Failure message: ' + test['message'])
 
-    send_results(tests)
+        send_results(tests)
 
-    # TODO: remove deletion
+        # TODO: remove deletion
 
 if __name__ == "__main__":
     try:
+        if len(sys.argv) > 0:
+            password = sys.argv[0]
         main()
         sys.exit(0)
     except Exception as e:
-        print "Script failed"
+        logger.log("Script failed")
         import traceback
         traceback.print_exc()
         sys.exit(1)

@@ -1,11 +1,23 @@
-NODES_NUMBER: 3
-RELEASE: 1
-DEPLOYMENT_MODE: "ha_compact"
-NUM_CONTROLLERS: 1
-NUM_COMPUTES: 1
-NUM_STORAGES: 1
-DEPLOY_TIMEOUT: 3600
-NODES_DISCOVERY_TIMEOUT: 600
-TESTRUN_TIMEOUT: 3600
-NET_PROVIDER: "nova_network"
-NAME: "sert-cluster"
+FUEL_API:
+  URL: "http://localhost:8000"
+CLUSTERS:
+  SIMPLE:
+    NODES_NUMBER: 3
+    RELEASE: 1
+    DEPLOYMENT_MODE: "ha_compact"
+    NUM_CONTROLLERS: 1
+    NUM_COMPUTES: 1
+    NUM_STORAGES: 1
+    DEPLOY_TIMEOUT: 3600
+    NODES_DISCOVERY_TIMEOUT: 600
+    TESTRUN_TIMEOUT: 3600
+    NET_PROVIDER: "nova_network"
+    NAME: "sert-cluster"
+
+REPORT:
+  MAIL:
+    SMTP_SERVER: "smtp.gmail.com"
+    MAIL_TO: "email@gmail.com"
+    MAIL_FROM: "email@gmail.com"
+    LOGIN: "Example"
+    PASS: "Pass"

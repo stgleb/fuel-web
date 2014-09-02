@@ -6,16 +6,17 @@ import time
 import yaml
 import logging
 
+from optparse import OptionParser
 from email.mime.text import MIMEText
 
 
-FUEL_BASE_URL = "http://localhost:8000"
+# FUEL_BASE_URL = "http://localhost:8000"
 CONFIG_PATH = "/etc/sert-script/config.yaml"
-SMTP_SERVER = 'smtp.gmail.com'
-MAIL_TO = "email@gmail.com"
-MAIL_FROM = "email@gmail.com"
-LOGIN = "Example"
-PASS = "Pass"
+# SMTP_SERVER = 'smtp.gmail.com'
+# MAIL_TO = "email@gmail.com"
+# MAIL_FROM = "email@gmail.com"
+# LOGIN = "Example"
+# PASS = "Pass"
 
 logger = logging.getLogger('sertification script logger')
 logger.setLevel(10)
@@ -49,6 +50,20 @@ def parse_config():
     return yaml.load(config_data)
 
 
+def parse_command_line():
+    parser = OptionParser("usage: %prog [options] arg1")
+    d = {}
+    parser.add_option('-p', '--password', dest='password', default='1234', help='password for email')
+    (options, args) = parser.parse_args()
+    d['password'] = options.password
+
+    return d
+
+
+def merge_config(config,command_line):
+    pass
+
+
 def create_cluster(config):
     cluster_name = config.get('NAME')
     print "Creating new cluster %s" % cluster_name
@@ -66,9 +81,8 @@ def create_cluster(config):
 
 def get_unallocated_nodes(num_nodes, timeout):
     logger.log("Waiting for %s nodes to be discovered..." % num_nodes)
-    while timeout > 0:
+    for _ in range(timeout):
         response = api_request('/api/nodes', 'GET')
-        timeout -= 1
 
         nodes_allocated = len([x for x in response if x['cluster'] is None])
         if nodes_allocated >= num_nodes:
@@ -93,33 +107,29 @@ def deploy(cluster_id, timeout):
     logger.log("Starting deploy...")
     api_request('/api/clusters/' + str(cluster_id) + '/changes',
                 'PUT')
-    t = timeout
 
-    while t > 0:
+    for _ in range(timeout):
         cluster = api_request('/api/clusters/' + str(cluster_id))
         if cluster['status'] == 'operational':
             break
         time.sleep(1)
-        t -= 1
     else:
         raise Exception('Cluster deploy timeout error')
 
     t = timeout
     response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
 
-    while timeout > 0:
+    for _ in range(timeout):
         flag = True
 
         for task in response:
-            if task['status'] != 'ready':
-                flag = False
-
-                if task['status'] == 'error':
-                    raise Exception('Task execution error')
-        if flag:
+            if task['status'] == 'error':
+                raise Exception('Task execution error')
+            elif task['status'] == 'ready':
+                break
+        else:
             break
         time.sleep(1)
-        t -= 1
     else:
         raise Exception('Tasks timeout error')
 
@@ -179,6 +189,9 @@ def send_results(tests):
 
 def main():
     config_file = parse_config()
+    command_line_options = parse_command_line()
+
+    merge_config(config_file,command_line_options)
 
     for config in config_file['CLUSTERS']:
         cluster_id = create_cluster(config)
@@ -222,13 +235,5 @@ def main():
         # TODO: remove deletion
 
 if __name__ == "__main__":
-    try:
-        if len(sys.argv) > 0:
-            password = sys.argv[0]
-        main()
-        sys.exit(0)
-    except Exception as e:
-        logger.log("Script failed")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    parse_command_line()
+    exit(main())

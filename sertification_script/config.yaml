@@ -17,6 +17,7 @@ CLUSTERS:
 REPORT:
   MAIL:
     SMTP_SERVER: "smtp.gmail.com"
+    SMTP_PORT: 587
     MAIL_TO: "email@gmail.com"
     MAIL_FROM: "email@gmail.com"
     LOGIN: "Example"

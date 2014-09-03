@@ -27,4 +27,5 @@ def api_request(url, method='GET', data=None, headers=None):
 
 
 def set_fuel_base_url(base_url):
+    global FUEL_BASE_URL
     FUEL_BASE_URL = base_url

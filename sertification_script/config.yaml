@@ -1,5 +1,5 @@
 fuel_api:
-  url: "http://localhost:8000"
+  url: "http://10.20.0.2:8000"
 
 tests:
     config_directory: clusters

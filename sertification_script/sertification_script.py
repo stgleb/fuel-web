@@ -12,7 +12,8 @@ from fuel_rest_api import api_request, set_fuel_base_url
 
 
 FUEL_BASE_URL = "http://localhost:8000"
-CONFIG_PATH = "/etc/sert-script/config.yaml"
+# CONFIG_PATH = "/etc/sert-script/config.yaml"
+CONFIG_PATH = 'config.yaml'
 
 logger = logging.getLogger('SERT')
 logger.setLevel(logging.DEBUG)
@@ -27,7 +28,7 @@ def parse_config():
 def parse_command_line():
     parser = OptionParser("usage: %prog [options] arg1")
     d = {}
-    parser.add_option('-p', '--password', dest='password', default='1234', help='password for email')
+    parser.add_option('-p', '--password', dest='password', help='password for email')
     (options, args) = parser.parse_args()
     d['password'] = options.password
 
@@ -35,7 +36,8 @@ def parse_command_line():
 
 
 def merge_config(config, command_line):
-    config['report']['mail'].get('password', command_line.get('password'))
+    if config['report']['mail'].get('password') is None:
+        config['report']['mail']['password'] = command_line.get('password')
 
 
 def get_unallocated_nodes(num_nodes, timeout):
@@ -214,10 +216,11 @@ def main():
     command_line = parse_command_line()
     merge_config(config, command_line)
 
-    set_fuel_base_url(config['fuel_api'].get('url',))
+    set_fuel_base_url(config['fuel_api'].get('url'))
     test_run_timeout = config.get('testrun_timeout', 3600)
+    config['clusters'] = load_all_clusters('clusters/')
 
-    for cluster in config['clusters']:
+    for cluster in config['clusters'].values():
         cluster_id = deploy_cluster(config['name'], cluster)
         results = run_all_tests(cluster_id, test_run_timeout)
 
@@ -232,7 +235,7 @@ def main():
 
         send_results(tests, config['report']['mail'])
 
-        # TODO: cluster deletion
+        delete_cluster(cluster_id)
 
 if __name__ == "__main__":
     parse_command_line()

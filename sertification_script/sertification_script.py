@@ -77,11 +77,8 @@ def deploy(cluster_id, timeout):
     else:
         raise Exception('Cluster deploy timeout error')
 
-    t = timeout
-    response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
-
     for _ in range(timeout):
-        flag = True
+        response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
 
         for task in response:
             if task['status'] == 'error':

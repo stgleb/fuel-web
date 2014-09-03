@@ -41,7 +41,7 @@ def merge_config(config, command_line):
 
 
 def get_unallocated_nodes(num_nodes, timeout):
-    logger.debug("Waiting for %s nodes to be discovered..." % num_nodes)
+    # logger.debug("Waiting for %s nodes to be discovered..." % num_nodes)
     for _ in range(timeout):
         response = api_request('/api/nodes', 'GET')
 
@@ -59,13 +59,13 @@ def add_node_to_cluster(cluster_id, node_id, roles):
     data['cluster_id'] = cluster_id
     data['id'] = node_id
     data['pending_addition'] = True
-    logger.debug("Adding node %s to cluster..." % node_id)
+    # logger.debug("Adding node %s to cluster..." % node_id)
 
     api_request('/api/nodes', 'PUT', [data])
 
 
 def deploy(cluster_id, timeout):
-    logger.debug("Starting deploy...")
+    # logger.debug("Starting deploy...")
     api_request('/api/clusters/' + str(cluster_id) + '/changes',
                 'PUT')
 
@@ -97,7 +97,7 @@ def deploy(cluster_id, timeout):
 
 def run_all_tests(cluster_id, timeout):
     # Get all available tests
-    logger.debug("Running tests...")
+    # logger.debug("Running tests...")
     testsets = api_request('/ostf/testsets/%s' % str(cluster_id))
     test_data = []
     for testset in testsets:
@@ -142,7 +142,7 @@ def send_results(mail_config, tests):
     msg['To'] = mail_config['mail_to']
     msg['From'] = mail_config['mail_from']
 
-    logger.debug("Sending results by email...")
+    # logger.debug("Sending results by email...")
     server.sendmail(mail_config['mail_from'],
                     [mail_config['mail_to']],
                     msg.as_string())
@@ -158,7 +158,7 @@ def load_all_clusters(path):
         except Exception as exc:
             msg = "Failed to load cluster from file {}: {}".format(
                 fname, exc)
-            logger.error(msg)
+            # logger.error(msg)
     return res
 
 
@@ -187,7 +187,7 @@ def deploy_cluster(name, cluster):
     num_storages = cluster['num_storage']
 
     num_nodes = num_controllers + num_computes + num_storages
-    logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
+    # logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
     nodes_discover_timeout = cluster.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
 
@@ -229,9 +229,9 @@ def main():
             tests.extend(testset['tests'])
 
         failed_tests = [test for test in tests if test['status'] == 'failure']
-        for test in failed_tests:
-            logger.debug(test['name'])
-            logger.debug(" "*10 + 'Failure message: ' + test['message'])
+        # for test in failed_tests:
+            # logger.debug(test['name'])
+            # logger.debug(" "*10 + 'Failure message: ' + test['message'])
 
         send_results(tests, config['report']['mail'])
 

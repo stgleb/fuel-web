@@ -19,8 +19,13 @@ CONFIG_PATH = 'config.yaml'
 with open('logging.yaml', 'rt') as f:
     cfg = yaml.load(f)
 
+
 config.dictConfig(cfg)
 logger = logging.getLogger('clogger')
+
+config.dictConfig(cfg)
+logger = logging.getLogger('clogger')
+
 
 def parse_config():
     with open(CONFIG_PATH) as f:
@@ -93,36 +98,25 @@ def deploy(cluster_id, timeout):
         raise Exception('Tasks timeout error')
 
 
-def run_all_tests(cluster_id, timeout):
-    # Get all available tests
-    logger.debug("Running tests...")
-    testsets = api_request('/ostf/testsets/%s' % str(cluster_id))
-    test_data = []
-    for testset in testsets:
-        test_data.append(
-            {'testset': testset['id'],
-             'tests': [],
-             'metadata': {'cluster_id': cluster_id}})
-        # Run all available tests
+def find_test_classes():
+    test_classes = []
+    for loader, name, is_package in pkgutil.iter_modules(['tests']):
+        module = loader.find_module(name).load_module(name)
+        test_classes.extend([member for name, member in
+                             inspect.getmembers(module)
+                             if inspect.isclass(member)])
+    return test_classes
 
-    headers = {'Content-type': 'application/json'}
-    testruns = api_request('/ostf/testruns', 'POST', data=test_data,
-                           headers=headers)
-    started_at = time.time()
-    finished_testruns = []
-    while testruns:
-        if time.time() - started_at < timeout:
-            for testrun in testruns:
-                testrun_resp = api_request('/ostf/testruns/%s' % testrun['id'])
-                if testrun_resp['status'] != 'finished':
-                    time.sleep(5)
-                    continue
-                else:
-                    finished_testruns.append(testrun_resp)
-                    testruns.remove(testrun)
-        else:
-            raise Exception('Timeout error')
-    return finished_testruns
+
+def run_all_tests(cluster_id, timeout, tests_to_run):
+    test_classes = find_test_classes()
+    results = []
+    for test_class in test_classes:
+        test_class_inst = test_class(FUEL_BASE_URL, cluster_id, timeout)
+        available_tests = test_class_inst.get_available_tests()
+        results.extend(test_class_inst.run_tests(
+            set(available_tests) & set(tests_to_run)))
+    return results
 
 
 def send_results(mail_config, tests):

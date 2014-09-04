@@ -1,6 +1,8 @@
+import inspect
 import time
 import glob
 import os.path
+import pkgutil
 import smtplib
 import logging
 
@@ -36,7 +38,8 @@ def parse_config():
 def parse_command_line():
     parser = OptionParser("usage: %prog [options] arg1")
     d = {}
-    parser.add_option('-p', '--password', dest='password', help='password for email')
+    parser.add_option('-p', '--password', dest='password',
+                      help='password for email')
     (options, args) = parser.parse_args()
     d['password'] = options.password
 
@@ -213,8 +216,11 @@ def main():
     config['clusters'] = load_all_clusters('clusters/')
 
     for cluster in config['clusters'].values():
+
+        # TODO: get tests to run from config
+        tests_to_run = ['sanity', 'smoke']
         cluster_id = deploy_cluster(config['name'], cluster)
-        results = run_all_tests(cluster_id, test_run_timeout)
+        results = run_all_tests(cluster_id, test_run_timeout, tests_to_run)
 
         tests = []
         for testset in results:

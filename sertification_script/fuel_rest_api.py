@@ -1,6 +1,7 @@
 import requests
 import json
 
+
 FUEL_BASE_URL = ''
 
 

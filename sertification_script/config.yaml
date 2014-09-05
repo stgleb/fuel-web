@@ -2,14 +2,17 @@ fuel_api:
   url: "http://172.18.201.16:8000"
 
 tests:
-    config_directory: clusters
-    test_simple:
-        cluster: simple
-        test: oscf
+    clusters_directory: clusters
+    tests:
+        test_simple:
+            cluster: simple
+            suits: oscf
 
 deploy_timeout: 3600
 discovery_timeout: 600
 name: "sert-cluster"
+
+log_settings: logging.yaml
 
 report:
   mail:

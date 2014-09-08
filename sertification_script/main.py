@@ -92,5 +92,10 @@ def main():
 
     return 0
 
+
+def main():
+    exit(main())
+
+
 if __name__ == "__main__":
     exit(main())

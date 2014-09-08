@@ -15,18 +15,19 @@ logger = None
 
 
 def set_logger(log):
-    global logger
+    global loggerii
     logger = log
 
 
-def get_unallocated_nodes(num_nodes, timeout):
-    logger.debug("Waiting for %s nodes to be discovered..." % num_nodes)
+def map_node_role_id(nodes, timeout):
+    logger.debug("Waiting for nodes %s to be discovered..." % nodes)
     for _ in range(timeout):
         response = api_request('/api/nodes', 'GET')
 
-        nodes_allocated = len([x for x in response if x['cluster'] is None])
-        if nodes_allocated >= num_nodes:
-            return response
+        nodes_discovered = len([x for x in response if x['cluster'] is None])
+        if set(nodes).issubset([node['name'] for node in nodes_discovered]):
+            return [(node['id'], nodes[node['name']]) for node in
+                    nodes_discovered if node['name'] in nodes]
         time.sleep(1)
 
     raise Exception('Timeout exception')
@@ -133,7 +134,7 @@ def create_empty_cluster(name, cluster):
     data['name'] = name
     data['release'] = cluster['release']
     data['mode'] = cluster['deployment_mode']
-    data['net_provider'] = cluster['net_provider']
+    data['net_provider'] = cluster['settings']['net_provider']
     response = api_request('/api/clusters', 'POST', data)
     return response['id']
 
@@ -145,30 +146,17 @@ def delete_cluster(cluster_id):
 def deploy_cluster(name, cluster):
     cluster_id = create_empty_cluster(name, cluster)
 
-    num_controllers = cluster['num_controllers']
-    num_computes = cluster['num_computes']
-    num_storages = cluster['num_storage']
-
-    num_nodes = num_controllers + num_computes + num_storages
+    num_nodes = len(cluster['nodes'])
     logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
     nodes_discover_timeout = cluster.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
 
-    nodes = get_unallocated_nodes(num_nodes, nodes_discover_timeout)
+    nodes_info = cluster['nodes'].keys()
+    nodes_roles_mapping = map_node_role_id(nodes_info,
+                                           nodes_discover_timeout)
 
-    nodes_roles_mapping = []
-
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'controller') for _ in range(num_controllers)])
-
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'cinder') for _ in range(num_storages)])
-
-    nodes_roles_mapping.extend(
-        [(nodes.pop()['id'], 'compute') for _ in range(num_computes)])
-
-    for node_id, role in nodes_roles_mapping:
-        add_node_to_cluster(cluster_id, node_id, roles=[role])
+    for node_id, roles in nodes_roles_mapping:
+        add_node_to_cluster(cluster_id, node_id, roles=roles)
 
     deploy(cluster_id, deploy_timeout)
     return cluster_id

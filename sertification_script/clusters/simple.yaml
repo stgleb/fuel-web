@@ -1,8 +1,13 @@
 name: simple
-release: 1
 deployment_mode: "ha_compact"
-num_controllers: 1
-num_computes: 1
-num_storage: 1
-net_provider: "nova_network"
+settings:
+  net_provider: "nova_network"
+release: 1
+nodes:
+  node-01:
+    - "controller"
+  node-02:
+    - "compute"
+  node-03:
+    - "cinder"
 timeout: 3600

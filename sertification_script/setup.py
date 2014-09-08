@@ -13,7 +13,7 @@ setup(
     packages=find_packages(),
     entry_points={
         'console_scripts': [
-            'sert = main:main',
+            'sert = sertification_script.main:main',
         ],
     }
 )

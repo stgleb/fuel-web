@@ -5,7 +5,8 @@ from optparse import OptionParser
 import yaml
 
 import sertification_script as ss
-from fuel_rest_api import set_fuel_base_url
+from sertification_script.sertification_script.fuel_rest_api import set_fuel_base_url
+
 
 DEFAULT_CONFIG_PATH = 'config.yaml'
 

@@ -5,10 +5,11 @@ import pkgutil
 import smtplib
 import inspect
 import contextlib
+from email.mime.text import MIMEText
 
 import yaml
-from email.mime.text import MIMEText
-from fuel_rest_api import api_request
+
+from sertification_script.sertification_script.fuel_rest_api import api_request
 
 
 logger = None

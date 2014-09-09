@@ -5,7 +5,8 @@ from optparse import OptionParser
 import yaml
 
 import sertification_script as ss
-from fuel_rest_api import set_fuel_base_url
+from sertification_script.sertification_script.fuel_rest_api import set_fuel_base_url
+
 
 DEFAULT_CONFIG_PATH = 'config.yaml'
 
@@ -91,6 +92,11 @@ def main():
             ss.send_results(config['report']['mail'], tests)
 
     return 0
+
+
+def main():
+    exit(main())
+
 
 if __name__ == "__main__":
     exit(main())

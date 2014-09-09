@@ -1,6 +1,6 @@
-import requests
 import json
 
+import sys
 
 FUEL_BASE_URL = ''
 

@@ -9,9 +9,11 @@ import contextlib
 from email.mime.text import MIMEText
 
 import yaml
+from fuel_rest_api import api_request
 
-from sertification_script.sertification_script.fuel_rest_api import api_request
 
+import sys
+sys.path.insert(0, '../lib/requests')
 
 logger = None
 

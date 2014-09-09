@@ -2,6 +2,10 @@ import json
 
 import sys
 
+import sys
+sys.path.insert(0, '../lib/requests')
+import requests
+
 FUEL_BASE_URL = ''
 
 

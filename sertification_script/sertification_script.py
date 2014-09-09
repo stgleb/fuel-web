@@ -1,3 +1,4 @@
+import functools
 import time
 import glob
 import os.path
@@ -126,12 +127,12 @@ def load_all_clusters(path):
     return res
 
 
-def create_empty_cluster(name, cluster):
-    print "Creating new cluster %s" % name
+def create_empty_cluster(cluster):
+    print "Creating new cluster %s" % cluster['name']
     data = {}
     data['nodes'] = []
     data['tasks'] = []
-    data['name'] = name
+    data['name'] = cluster['name']
     data['release'] = cluster['release']
     data['mode'] = cluster['deployment_mode']
     data['net_provider'] = cluster['settings']['net_provider']
@@ -143,8 +144,8 @@ def delete_cluster(cluster_id):
     api_request('/api/clusters/' + str(cluster_id), 'DELETE')
 
 
-def deploy_cluster(name, cluster):
-    cluster_id = create_empty_cluster(name, cluster)
+def deploy_cluster(cluster):
+    cluster_id = create_empty_cluster(cluster)
 
     num_nodes = len(cluster['nodes'])
     logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
@@ -163,9 +164,24 @@ def deploy_cluster(name, cluster):
 
 
 @contextlib.contextmanager
-def make_cluster(name, cluster):
-    cid = deploy_cluster(name, cluster)
+def make_cluster(cluster):
+    cid = deploy_cluster(cluster)
     try:
         yield cid
     finally:
         delete_cluster(cid)
+
+
+def with_cluster(config_path):
+    cluster = yaml.load(open(config_path).read())
+
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            with make_cluster(cluster) as cluster_id:
+                arg_spec = inspect.getargspec(f)
+                if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
+                    kwargs['cluster_id'] = cluster_id
+                return f(*args, **kwargs)
+        return wrapper
+    return decorator

@@ -71,7 +71,7 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        with ss.make_cluster(name, cluster) as cluster_id:
+        with ss.make_cluster(cluster) as cluster_id:
             results = ss.run_all_tests(cluster_id,
                                        test_run_timeout,
                                        tests_to_run,

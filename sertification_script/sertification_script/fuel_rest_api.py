@@ -21,6 +21,8 @@ def api_request(url, method='GET', data=None, headers=None):
         response = requests.post(url, data_str, headers=headers)
     elif method == 'PUT':
         response = requests.put(url, data_str, headers=headers)
+    elif method == 'DELETE':
+        response = requests.delete(url)
     else:
         raise Exception("Unknown method: %s" % method)
 

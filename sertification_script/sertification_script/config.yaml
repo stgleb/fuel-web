@@ -6,7 +6,9 @@ tests:
     tests:
         test_simple:
             cluster: simple
-            suits: oscf
+            suits:
+              - sanity
+              - smoke
 
 deploy_timeout: 3600
 discovery_timeout: 600

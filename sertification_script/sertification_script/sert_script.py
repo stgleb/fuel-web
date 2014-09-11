@@ -9,7 +9,8 @@ import contextlib
 from email.mime.text import MIMEText
 
 import yaml
-from fuel_rest_api import api_request
+from sertification_script.fuel_rest_api import api_request
+from sertification_script.tests import base
 
 
 import sys
@@ -19,16 +20,15 @@ logger = None
 
 
 def set_logger(log):
-    global loggerii
+    global logger
     logger = log
 
 
 def map_node_role_id(nodes, timeout):
-    logger.debug("Waiting for nodes %s to be discovered..." % nodes)
+    logger.debug("Waiting for nodes %s to be discovered..." % nodes.keys())
     for _ in range(timeout):
         response = api_request('/api/nodes', 'GET')
-
-        nodes_discovered = len([x for x in response if x['cluster'] is None])
+        nodes_discovered = [x for x in response if x['cluster'] is None]
         if set(nodes).issubset([node['name'] for node in nodes_discovered]):
             return [(node['id'], nodes[node['name']]) for node in
                     nodes_discovered if node['name'] in nodes]
@@ -80,7 +80,8 @@ def find_test_classes():
         module = loader.find_module(name).load_module(name)
         test_classes.extend([member for name, member in
                              inspect.getmembers(module)
-                             if inspect.isclass(member)])
+                             if inspect.isclass(member) and
+                                issubclass(member, base.BaseTests)])
     return test_classes
 
 
@@ -155,7 +156,7 @@ def deploy_cluster(cluster):
     nodes_discover_timeout = cluster.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
 
-    nodes_info = cluster['nodes'].keys()
+    nodes_info = cluster['nodes']
     nodes_roles_mapping = map_node_role_id(nodes_info,
                                            nodes_discover_timeout)
 
@@ -172,6 +173,7 @@ def make_cluster(cluster):
     try:
         yield cid
     finally:
+        pass
         delete_cluster(cid)
 
 

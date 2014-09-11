@@ -1,11 +1,11 @@
 import os.path
 import logging
 from optparse import OptionParser
-
+from logging import config
 import yaml
 
-import sertification_script as ss
-from sertification_script.sertification_script.fuel_rest_api import set_fuel_base_url
+import sert_script as ss
+from sertification_script.fuel_rest_api import set_fuel_base_url
 
 
 DEFAULT_CONFIG_PATH = 'config.yaml'
@@ -67,7 +67,7 @@ def main():
     clusters = ss.load_all_clusters(path)
 
     tests_cfg = config['tests']['tests']
-    for name, test_cfg in tests_cfg['tests'].iteritems():
+    for name, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']
@@ -92,10 +92,6 @@ def main():
             ss.send_results(config['report']['mail'], tests)
 
     return 0
-
-
-def main():
-    exit(main())
 
 
 if __name__ == "__main__":

@@ -4,10 +4,10 @@ settings:
   net_provider: "nova_network"
 release: 1
 nodes:
-  node-01:
+  "Untitled (cc:a8)":
     - "controller"
-  node-02:
+  "Untitled (12:b0)":
     - "compute"
-  node-03:
+  "Untitled (d8:92)":
     - "cinder"
 timeout: 3600

@@ -1,7 +1,7 @@
 import time
 
-import base
-from sertification_script.sertification_script.sertification_script.fuel_rest_api import api_request
+from sertification_script.fuel_rest_api import api_request
+from sertification_script.tests import base
 
 
 class OSTFTests(base.BaseTests):

@@ -14,9 +14,7 @@ nodes:
       roles:
         - "compute"
       requirements:
-        cpu_count_max: 1
-        hd_size_min: 100
-        hd_size_max: 250
+        cpu_count_min: 1
     node3:
       roles:
         - "cinder"

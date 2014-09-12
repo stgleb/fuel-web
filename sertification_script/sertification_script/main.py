@@ -54,6 +54,7 @@ def setup_logger(config):
     logging.config.dictConfig(cfg)
 
     ss.set_logger(logging.getLogger('clogger'))
+    fuel_rest_api.set_logger(logging.getLogger('clogger'))
 
 
 def main():

@@ -9,11 +9,11 @@ import contextlib
 from email.mime.text import MIMEText
 
 import yaml
-from sertification_script.fuel_rest_api import api_request, get_all_nodes, set_node_name, get_clusters
-from sertification_script.tests import base
-
+from fuel_rest_api import get_all_nodes, set_node_name, get_clusters, create_empty_cluster
+from tests import base
 
 import sys
+
 sys.path.insert(0, '../lib/requests')
 
 logger = None
@@ -29,57 +29,20 @@ def set_node_names(cluster):
     nodes = list(get_all_nodes())
 
     for node, name in zip(nodes, names):
-        set_node_name(node, name)
+        node.set_node_name(name)
 
 
 def map_node_role_id(nodes, timeout):
     logger.debug("Waiting for nodes %s to be discovered..." % nodes.keys())
     for _ in range(timeout):
-        response = api_request('/api/nodes', 'GET')
-        nodes_discovered = [x for x in response if x['cluster'] is None]
+        nodes_discovered = get_all_nodes()
+
         if set(nodes).issubset([node['name'] for node in nodes_discovered]):
-            return [(node['id'], nodes[node['name']]) for node in
-                    nodes_discovered if node['name'] in nodes]
+            return [(node['id'], nodes[node.name]) for node in
+                    nodes_discovered if node.name in nodes]
         time.sleep(1)
 
     raise Exception('Timeout exception')
-
-
-def add_node_to_cluster(cluster_id, node_id, roles):
-    data = {}
-    data['pending_roles'] = roles
-    data['cluster_id'] = cluster_id
-    data['id'] = node_id
-    data['pending_addition'] = True
-    logger.debug("Adding node %s to cluster..." % node_id)
-
-    api_request('/api/nodes', 'PUT', [data])
-
-
-def deploy(cluster_id, timeout):
-    logger.debug("Starting deploy...")
-    api_request('/api/clusters/' + str(cluster_id) + '/changes',
-                'PUT')
-
-    for _ in range(timeout):
-        cluster = api_request('/api/clusters/' + str(cluster_id))
-        if cluster['status'] == 'operational':
-            break
-        time.sleep(1)
-    else:
-        raise Exception('Cluster deploy timeout error')
-
-    for _ in range(timeout):
-        response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
-
-        for task in response:
-            if task['status'] == 'error':
-                raise Exception('Task execution error')
-        else:
-            break
-        time.sleep(1)
-    else:
-        raise Exception('Tasks timeout error')
 
 
 def find_test_classes():
@@ -139,40 +102,23 @@ def load_all_clusters(path):
     return res
 
 
-def create_empty_cluster(cluster):
-    print "Creating new cluster %s" % cluster['name']
-    data = {}
-    data['nodes'] = []
-    data['tasks'] = []
-    data['name'] = cluster['name']
-    data['release'] = cluster['release']
-    data['mode'] = cluster['deployment_mode']
-    data['net_provider'] = cluster['settings']['net_provider']
-    response = api_request('/api/clusters', 'POST', data)
-    return response['id']
-
-
-def delete_cluster(cluster_id):
-    api_request('/api/clusters/' + str(cluster_id), 'DELETE')
-
-
-def deploy_cluster(cluster):
-    cluster_id = create_empty_cluster(cluster)
+def deploy_cluster(cluster_desc):
+    cluster = create_empty_cluster(cluster_desc)
 
     num_nodes = len(cluster['nodes'])
     logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
-    nodes_discover_timeout = cluster.get('nodes_discovery_timeout', 3600)
-    deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
+    nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
+    deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
 
-    nodes_info = cluster['nodes']
+    nodes_info = cluster_desc['nodes']
     nodes_roles_mapping = map_node_role_id(nodes_info,
                                            nodes_discover_timeout)
 
     for node_id, roles in nodes_roles_mapping:
-        add_node_to_cluster(cluster_id, node_id, roles=roles)
+        cluster.add_node(node_id, roles=roles)
 
-    deploy(cluster_id, deploy_timeout)
-    return cluster_id
+    cluster.deploy(deploy_timeout)
+    return cluster
 
 
 @contextlib.contextmanager
@@ -180,25 +126,29 @@ def make_cluster(cluster, auto_delete):
     if auto_delete:
         for cluster_obj in get_clusters():
             if cluster_obj.name == cluster['name']:
-                delete_cluster(cluster_obj.id)
+                cluster_obj.delete_cluster()
 
-    cid = deploy_cluster(cluster)
+    c = deploy_cluster(cluster)
     try:
-        yield cid
+        yield c
     finally:
-        delete_cluster(cid)
+        c.delete_cluster()
 
 
 def with_cluster(config_path):
-    cluster = yaml.load(open(config_path).read())
+    cluster_desc = yaml.load(open(config_path).read())
 
     def decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            with make_cluster(cluster) as cluster_id:
+            with make_cluster(cluster_desc) as cluster:
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
-                    kwargs['cluster_id'] = cluster_id
+                    kwargs['cluster_id'] = cluster.id
                 return f(*args, **kwargs)
         return wrapper
     return decorator
+
+
+if __name__ == '__main__':
+    with_cluster('config.yaml')

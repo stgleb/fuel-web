@@ -18,31 +18,12 @@ sys.path.insert(0, '../lib/requests')
 
 logger = None
 
+GB = 1024 * 1024 * 1024
+
 
 def set_logger(log):
     global logger
     logger = log
-
-
-def set_node_names(cluster):
-    names = [i.strip() for i in cluster['node_names'].split(',')]
-    nodes = list(get_all_nodes())
-
-    for node, name in zip(nodes, names):
-        set_node_name(node, name)
-
-
-def map_node_role_id(nodes, timeout):
-    logger.debug("Waiting for nodes %s to be discovered..." % nodes.keys())
-    for _ in range(timeout):
-        response = api_request('/api/nodes', 'GET')
-        nodes_discovered = [x for x in response if x['cluster'] is None]
-        if set(nodes).issubset([node['name'] for node in nodes_discovered]):
-            return [(node['id'], nodes[node['name']]) for node in
-                    nodes_discovered if node['name'] in nodes]
-        time.sleep(1)
-
-    raise Exception('Timeout exception')
 
 
 def add_node_to_cluster(cluster_id, node_id, roles):
@@ -54,6 +35,60 @@ def add_node_to_cluster(cluster_id, node_id, roles):
     logger.debug("Adding node %s to cluster..." % node_id)
 
     api_request('/api/nodes', 'PUT', [data])
+
+
+def find_node_by_requirements(nodes, requirements):
+    min_cpu = requirements.get('cpu_count_min') or 0
+    max_cpu = requirements.get('cpu_count_max') or 1000
+    min_hd = requirements.get('hd_size_min') or 0
+    max_hd = requirements.get('hd_size_max') or 10000
+
+    def cpu_valid(cpu):
+        return max_cpu >= cpu >= min_cpu
+
+    def hd_valid(hd):
+        return max_hd >= hd >= min_hd
+
+    for node in nodes:
+        cpu = node['meta']['cpu']['total']
+        hd = sum([disk['size'] for disk in node['meta']['disks']]) / GB
+        if cpu_valid(cpu) and hd_valid(hd):
+            return node
+
+
+def add_nodes_to_cluster(cluster_id, nodes, timeout):
+    num_nodes = len(nodes)
+    logger.debug("Waiting for nodes %s to be discovered..." % nodes.keys())
+    for _ in range(timeout):
+        response = api_request('/api/nodes', 'GET')
+        nodes_discovered = [x for x in response if x['cluster'] is None]
+        if len(nodes_discovered) < num_nodes:
+            time.sleep(1)
+            continue
+        else:
+            node_mac_mapping = dict([(node['mac'].upper(), node) for
+                                     node in nodes_discovered])
+            for node in nodes.values():
+                mac = node.get('mac')
+                requirements = node.get('requirements')
+                if mac:
+                    node_found = node_mac_mapping.get(mac.upper())
+                    if not node_found:
+                        raise Exception("node with mac %s not found" % mac)
+                    add_node_to_cluster(cluster_id, node_found['id'],
+                                        node['roles'])
+                    nodes_discovered.remove(node_found)
+                    continue
+                if requirements:
+                    node_found = find_node_by_requirements(nodes_discovered,
+                                                           requirements)
+                    if not node_found:
+                        raise Exception("node with requirements not found")
+                    add_node_to_cluster(cluster_id, node_found['id'],
+                                        node['roles'])
+                    nodes_discovered.remove(node_found)
+            return
+    raise Exception('Timeout exception')
 
 
 def deploy(cluster_id, timeout):
@@ -165,11 +200,8 @@ def deploy_cluster(cluster):
     deploy_timeout = cluster.get('DEPLOY_TIMEOUT', 3600)
 
     nodes_info = cluster['nodes']
-    nodes_roles_mapping = map_node_role_id(nodes_info,
-                                           nodes_discover_timeout)
-
-    for node_id, roles in nodes_roles_mapping:
-        add_node_to_cluster(cluster_id, node_id, roles=roles)
+    add_nodes_to_cluster(cluster_id, nodes_info,
+                         nodes_discover_timeout)
 
     deploy(cluster_id, deploy_timeout)
     return cluster_id

@@ -67,9 +67,6 @@ def main():
 
     clusters = ss.load_all_clusters(path)
 
-    cluster = clusters['simple']
-    ss.set_node_names(cluster)
-
     tests_cfg = config['tests']['tests']
     for name, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]

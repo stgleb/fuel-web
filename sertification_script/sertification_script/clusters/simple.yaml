@@ -5,21 +5,22 @@ settings:
     net_provider: "nova_network"
 
 release: 1
-
-node_names: node1, node2, node3
-
-node_rules:
-    node1: * 
-    node2: max(cpu_count)
-    node3: max(sym_hd_size)
-
-
 nodes:
     node1:
+      roles:
         - "controller"
+      mac: "08:00:27:63:D8:92"
     node2:
+      roles:
         - "compute"
+      requirements:
+        cpu_count_max: 1
+        hd_size_min: 100
+        hd_size_max: 250
     node3:
+      roles:
         - "cinder"
+      requirements:
+        cpu_count_min: 1
 
 timeout: 3600

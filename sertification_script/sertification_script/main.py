@@ -1,11 +1,12 @@
 import os.path
 import logging
-from optparse import OptionParser
 from logging import config
+from optparse import OptionParser
+
 import yaml
 
 import sert_script as ss
-from sertification_script.fuel_rest_api import set_fuel_base_url
+from sertification_script.fuel_rest_api import set_fuel_base_url, get_all_nodes
 
 
 DEFAULT_CONFIG_PATH = 'config.yaml'
@@ -66,13 +67,16 @@ def main():
 
     clusters = ss.load_all_clusters(path)
 
+    cluster = clusters['simple']
+    ss.set_node_names(cluster)
+
     tests_cfg = config['tests']['tests']
     for name, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']
 
-        with ss.make_cluster(cluster) as cluster_id:
+        with ss.make_cluster(cluster, auto_delete=True) as cluster_id:
             results = ss.run_all_tests(cluster_id,
                                        test_run_timeout,
                                        tests_to_run,

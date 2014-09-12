@@ -1,13 +1,25 @@
 name: simple
 deployment_mode: "ha_compact"
+
 settings:
-  net_provider: "nova_network"
+    net_provider: "nova_network"
+
 release: 1
+
+node_names: node1, node2, node3
+
+node_rules:
+    node1: * 
+    node2: max(cpu_count)
+    node3: max(sym_hd_size)
+
+
 nodes:
-  "Untitled (cc:a8)":
-    - "controller"
-  "Untitled (12:b0)":
-    - "compute"
-  "Untitled (d8:92)":
-    - "cinder"
+    node1:
+        - "controller"
+    node2:
+        - "compute"
+    node3:
+        - "cinder"
+
 timeout: 3600

@@ -9,7 +9,7 @@ import contextlib
 from email.mime.text import MIMEText
 
 import yaml
-from sertification_script.fuel_rest_api import api_request
+from sertification_script.fuel_rest_api import api_request, get_all_nodes, set_node_name, get_clusters
 from sertification_script.tests import base
 
 
@@ -22,6 +22,14 @@ logger = None
 def set_logger(log):
     global logger
     logger = log
+
+
+def set_node_names(cluster):
+    names = [i.strip() for i in cluster['node_names'].split(',')]
+    nodes = list(get_all_nodes())
+
+    for node, name in zip(nodes, names):
+        set_node_name(node, name)
 
 
 def map_node_role_id(nodes, timeout):
@@ -168,12 +176,16 @@ def deploy_cluster(cluster):
 
 
 @contextlib.contextmanager
-def make_cluster(cluster):
+def make_cluster(cluster, auto_delete):
+    if auto_delete:
+        for cluster_obj in get_clusters():
+            if cluster_obj.name == cluster['name']:
+                delete_cluster(cluster_obj.id)
+
     cid = deploy_cluster(cluster)
     try:
         yield cid
     finally:
-        pass
         delete_cluster(cid)
 
 

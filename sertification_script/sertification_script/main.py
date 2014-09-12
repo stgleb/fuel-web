@@ -1,12 +1,14 @@
+import sys
 import os.path
-import logging
-from logging import config
+import logging.config
 from optparse import OptionParser
 
 import yaml
 
+import fuel_rest_api
 import sert_script as ss
-from fuel_rest_api import set_fuel_base_url, get_all_nodes
+
+sys.path.insert(0, '../lib/requests')
 
 
 DEFAULT_CONFIG_PATH = 'config.yaml'
@@ -26,11 +28,15 @@ def parse_command_line():
     parser.add_option('-c', '--config',
                       help='config file path', default=DEFAULT_CONFIG_PATH)
 
+    parser.add_option('-u', '--fuelurl',
+                      help='fuel rest url', default="http://10.20.0.2:8000")
+
     options, _ = parser.parse_args()
 
     result = {}
     result['password'] = options.password
     result['config'] = options.config
+    result['fuelurl'] = options.fuelurl
 
     return result
 
@@ -38,6 +44,7 @@ def parse_command_line():
 def merge_config(config, command_line):
     if command_line.get('password') is not None:
         config['report']['mail']['password'] = command_line.get('password')
+    config['fuelurl'] = command_line['fuelurl']
 
 
 def setup_logger(config):
@@ -57,8 +64,8 @@ def main():
     merge_config(config, args)
     setup_logger(config)
     logger = logging.getLogger('clogger')
-    fuel_base_url = config['fuel_api'].get('url')
-    set_fuel_base_url(fuel_base_url)
+    fuel_base_url = config['fuelurl']
+    fuel_rest_api.set_fuel_base_url(fuel_base_url)
 
     test_run_timeout = config.get('testrun_timeout', 3600)
 
@@ -68,7 +75,7 @@ def main():
     clusters = ss.load_all_clusters(path)
 
     tests_cfg = config['tests']['tests']
-    for name, test_cfg in tests_cfg.iteritems():
+    for _, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']

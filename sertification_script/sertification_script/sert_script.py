@@ -1,21 +1,17 @@
-import functools
 import time
 import glob
 import os.path
 import pkgutil
 import smtplib
 import inspect
+import functools
 import contextlib
 from email.mime.text import MIMEText
 
 import yaml
-from fuel_rest_api import get_all_nodes, get_clusters, \
-    create_empty_cluster, api_request
+
+import fuel_rest_api
 from tests import base
-
-import sys
-
-sys.path.insert(0, '../lib/requests')
 
 logger = None
 
@@ -27,95 +23,64 @@ def set_logger(log):
     logger = log
 
 
-def add_node_to_cluster(cluster_id, node_id, roles):
-    data = {}
-    data['pending_roles'] = roles
-    data['cluster_id'] = cluster_id
-    data['id'] = node_id
-    data['pending_addition'] = True
-    logger.debug("Adding node %s to cluster..." % node_id)
-
-    api_request('/api/nodes', 'PUT', [data])
-
-
 def find_node_by_requirements(nodes, requirements):
     min_cpu = requirements.get('cpu_count_min') or 0
     max_cpu = requirements.get('cpu_count_max') or 1000
     min_hd = requirements.get('hd_size_min') or 0
     max_hd = requirements.get('hd_size_max') or 10000
 
-    def cpu_valid(cpu):
-        return max_cpu >= cpu >= min_cpu
-
     def hd_valid(hd):
         return max_hd >= hd >= min_hd
 
+    def cpu_valid(cpu):
+        return max_cpu >= cpu >= min_cpu
+
     for node in nodes:
-        cpu = node['meta']['cpu']['total']
-        hd = sum([disk['size'] for disk in node['meta']['disks']]) / GB
+        cpu = node.meta['cpu']['total']
+        hd = sum(disk['size'] for disk in node.meta['disks']) / GB
+
         if cpu_valid(cpu) and hd_valid(hd):
             return node
+    return None
 
 
-def add_nodes_to_cluster(cluster_id, nodes, timeout):
-    num_nodes = len(nodes)
-    logger.debug("Waiting for nodes %s to be discovered..." % nodes.keys())
+def match_nodes(nodes_descriptions, timeout):
+    required_nodes_count = len(nodes_descriptions)
+    logger.debug("Waiting for nodes {} to be discovered...".format(required_nodes_count))
+    result = []
+
     for _ in range(timeout):
-        response = api_request('/api/nodes', 'GET')
-        nodes_discovered = [x for x in response if x['cluster'] is None]
-        if len(nodes_discovered) < num_nodes:
+        free_nodes = [node for node in fuel_rest_api.get_all_nodes()
+                      if node.cluster is None]
+
+        if len(free_nodes) < required_nodes_count:
             time.sleep(1)
-            continue
         else:
-            node_mac_mapping = dict([(node['mac'].upper(), node) for
-                                     node in nodes_discovered])
-            for node in nodes.values():
-                mac = node.get('mac')
-                requirements = node.get('requirements')
-                if mac:
-                    node_found = node_mac_mapping.get(mac.upper())
-                    if not node_found:
-                        raise Exception("node with mac %s not found" % mac)
-                    add_node_to_cluster(cluster_id, node_found['id'],
-                                        node['roles'])
-                    nodes_discovered.remove(node_found)
-                    continue
-                if requirements:
-                    node_found = find_node_by_requirements(nodes_discovered,
-                                                           requirements)
-                    if not node_found:
-                        raise Exception("node with requirements not found")
-                    add_node_to_cluster(cluster_id, node_found['id'],
-                                        node['roles'])
-                    nodes_discovered.remove(node_found)
-            return
+            node_mac_mapping = dict([(node.mac.upper(), node) for
+                                     node in free_nodes])
+            for node_description in nodes_descriptions.values():
+                found_node = None
+                node_mac = node_description.get('mac')
+                if node_mac is not None:
+                    node_mac = node_mac.upper()
+                    if node_mac in node_mac_mapping:
+                        found_node = node_mac_mapping[node_mac]
+                elif 'requirements' in node_description:
+                    found_node = find_node_by_requirements(free_nodes, \
+                                    node_description['requirements'])
+                else:
+                    found_node = free_nodes[0]
+
+                if found_node is None:
+                    print "Can't found node for requirements", node_mac, node_description.get('requirements')
+                    break
+
+                free_nodes.remove(found_node)
+                result.append((node_description, found_node))
+            else:
+                return result
+
     raise Exception('Timeout exception')
-
-
-def deploy(cluster_id, timeout):
-    logger.debug("Starting deploy...")
-    api_request('/api/clusters/' + str(cluster_id) + '/changes',
-                'PUT')
-
-    for _ in range(timeout):
-        cluster = api_request('/api/clusters/' + str(cluster_id))
-        if cluster['status'] == 'operational':
-            break
-        time.sleep(1)
-    else:
-        raise Exception('Cluster deploy timeout error')
-
-    for _ in range(timeout):
-        response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
-
-        for task in response:
-            if task['status'] == 'error':
-                raise Exception('Task execution error')
-        else:
-            break
-        time.sleep(1)
-    else:
-        raise Exception('Tasks timeout error')
 
 
 def find_test_classes():
@@ -176,25 +141,22 @@ def load_all_clusters(path):
 
 
 def deploy_cluster(cluster_desc):
-    cluster = create_empty_cluster(cluster_desc)
-
-    num_nodes = len(cluster_desc['nodes'])
-    logger.debug("Waiting for %d nodes to be discovered..." % num_nodes)
+    cluster = fuel_rest_api.create_empty_cluster(cluster_desc)
     nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
-    deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
-
+    #deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
-    add_nodes_to_cluster(cluster['id'], nodes_info,
-                         nodes_discover_timeout)
 
-    cluster.deploy(deploy_timeout)
+    for node_desc, node in match_nodes(nodes_info, nodes_discover_timeout):
+        cluster.add_node(node, node_desc['roles'])
+
+    #cluster.deploy(deploy_timeout)
     return cluster
 
 
 @contextlib.contextmanager
-def make_cluster(cluster, auto_delete):
+def make_cluster(cluster, auto_delete=False):
     if auto_delete:
-        for cluster_obj in get_clusters():
+        for cluster_obj in fuel_rest_api.get_clusters():
             if cluster_obj.name == cluster['name']:
                 cluster_obj.delete_cluster()
 
@@ -218,7 +180,3 @@ def with_cluster(config_path):
                 return f(*args, **kwargs)
         return wrapper
     return decorator
-
-
-if __name__ == '__main__':
-    with_cluster('config.yaml')

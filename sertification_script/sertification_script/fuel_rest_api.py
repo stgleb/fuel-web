@@ -1,8 +1,5 @@
+import sys
 import json
-
-import sys
-
-import sys
 import time
 
 sys.path.insert(0, '../lib/requests')
@@ -18,8 +15,22 @@ def set_logger(log):
     logger = log
 
 
+def set_fuel_base_url(base_url):
+    global FUEL_BASE_URL
+    if base_url.endswith('/'):
+        FUEL_BASE_URL = base_url
+    else:
+        FUEL_BASE_URL = base_url + '/'
+
+
 def api_request(url, method='GET', data=None, headers=None):
-    url = FUEL_BASE_URL + url
+
+    if url.startswith('/'):
+        url = FUEL_BASE_URL + url[1:]
+    else:
+        url = FUEL_BASE_URL + url
+
+    print method, url, data
 
     if data is None:
         data = ''
@@ -39,18 +50,16 @@ def api_request(url, method='GET', data=None, headers=None):
         raise Exception("Unknown method: %s" % method)
 
     if response.status_code in range(200, 400):
-            return json.loads(response.text)
+        return json.loads(response.text)
     else:
         raise Exception(str(response.status_code) +
-                        ' error has occured' + response.text)
-
-
-def set_fuel_base_url(base_url):
-    global FUEL_BASE_URL
-    FUEL_BASE_URL = base_url
+                        ' error has occured : ' + response.text)
 
 
 class RestObj(object):
+    name = None
+    id = None
+
     def __str__(self):
         res = ["{}({}):".format(self.__class__.__name__, self.name)]
         for k, v in sorted(self.__dict__.items()):
@@ -67,13 +76,13 @@ class Node(RestObj):
 
 class Cluster(RestObj):
 
-    def add_node(self, node_id, roles):
+    def add_node(self, node, roles):
         data = {}
         data['pending_roles'] = roles
         data['cluster_id'] = self.id
-        data['id'] = node_id
+        data['id'] = node.id
         data['pending_addition'] = True
-        logger.debug("Adding node %s to cluster..." % node_id)
+        logger.debug("Adding node %s to cluster..." % node.id)
 
         api_request('/api/nodes', 'PUT', [data])
 
@@ -91,16 +100,15 @@ class Cluster(RestObj):
             raise Exception('Cluster deploy timeout error')
 
         for _ in range(timeout):
-            response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
+            response = api_request('/api/tasks?tasks=' + str(self.id), 'GET')
 
             for task in response:
                 if task['status'] == 'error':
                     raise Exception('Task execution error')
-            else:
-                break
+
             time.sleep(1)
-        else:
-            raise Exception('Tasks timeout error')
+
+        raise Exception('Tasks timeout error')
 
     def delete_cluster(self):
         api_request('/api/clusters/' + str(self.id), 'DELETE')
@@ -129,9 +137,44 @@ def create_empty_cluster(cluster_desc):
     data['release'] = cluster_desc['release']
     data['mode'] = cluster_desc['deployment_mode']
     data['net_provider'] = cluster_desc['settings']['net_provider']
+
     cluster_response = api_request('/api/clusters', 'POST', data)
 
     cluster = Cluster()
     cluster.__dict__.update(cluster_response)
 
     return cluster
+
+# def add_node_to_cluster(cluster_id, node_id, roles):
+#     data = {}
+#     data['pending_roles'] = roles
+#     data['cluster_id'] = cluster_id
+#     data['id'] = node_id
+#     data['pending_addition'] = True
+#     logger.debug("Adding node %s to cluster..." % node_id)
+
+#     api_request('/api/nodes', 'PUT', [data])
+
+# def deploy(cluster_id, timeout):
+#     logger.debug("Starting deploy...")
+#     fuel_rest_api.api_request('/api/clusters/' + str(cluster_id) + '/changes', 'PUT')
+
+#     for _ in range(timeout):
+#         cluster = get_cluster(cluster_id)
+#         if cluster['status'] == 'operational':
+#             break
+#         time.sleep(1)
+#     else:
+#         raise Exception('Cluster deploy timeout error')
+
+#     for _ in range(timeout):
+#         response = api_request('/api/tasks?tasks=' + str(cluster_id), 'GET')
+
+#         for task in response:
+#             if task['status'] == 'error':
+#                 raise Exception('Task execution error')
+#         else:
+#             break
+#         time.sleep(1)
+#     else:
+#         raise Exception('Tasks timeout error')

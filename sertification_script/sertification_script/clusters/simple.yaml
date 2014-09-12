@@ -9,7 +9,7 @@ nodes:
     node1:
       roles:
         - "controller"
-      mac: "08:00:27:63:D8:92"
+      # mac: "08:00:27:63:D8:92"
     node2:
       roles:
         - "compute"

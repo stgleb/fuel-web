@@ -6,7 +6,7 @@ from optparse import OptionParser
 import yaml
 
 import sert_script as ss
-from sertification_script.fuel_rest_api import set_fuel_base_url, get_all_nodes
+from fuel_rest_api import set_fuel_base_url, get_all_nodes
 
 
 DEFAULT_CONFIG_PATH = 'config.yaml'

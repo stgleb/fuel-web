@@ -29,7 +29,7 @@ def parse_command_line():
                       help='config file path', default=DEFAULT_CONFIG_PATH)
 
     parser.add_option('-u', '--fuelurl',
-                      help='fuel rest url', default="http://10.20.0.2:8000")
+                      help='fuel rest url', default="http://10.20.0.2:8000/api/")
 
     options, _ = parser.parse_args()
 
@@ -65,8 +65,7 @@ def main():
     merge_config(config, args)
     setup_logger(config)
     logger = logging.getLogger('clogger')
-    fuel_base_url = config['fuelurl']
-    fuel_rest_api.set_fuel_base_url(fuel_base_url)
+    conn = fuel_rest_api.Urllib2HTTP(config['fuelurl'], echo=True)
 
     test_run_timeout = config.get('testrun_timeout', 3600)
 
@@ -81,24 +80,25 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        with ss.make_cluster(cluster, auto_delete=True) as cluster_id:
-            results = ss.run_all_tests(cluster_id,
-                                       test_run_timeout,
-                                       tests_to_run,
-                                       fuel_base_url)
+        with ss.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
+            # results = ss.run_all_tests(cluster_id,
+            #                            test_run_timeout,
+            #                            tests_to_run,
+            #                            config['fuelurl'])
 
-            tests = []
-            for testset in results:
-                tests.extend(testset['tests'])
+            # tests = []
+            # for testset in results:
+            #     tests.extend(testset['tests'])
 
-            failed_tests = [test for test in tests
-                            if test['status'] == 'failure']
+            # failed_tests = [test for test in tests
+            #                 if test['status'] == 'failure']
 
-            for test in failed_tests:
-                logger.debug(test['name'])
-                logger.debug(" "*10 + 'Failure message: ' + test['message'])
+            # for test in failed_tests:
+            #     logger.debug(test['name'])
+            #     logger.debug(" "*10 + 'Failure message: ' + test['message'])
 
-            ss.send_results(config['report']['mail'], tests)
+            # ss.send_results(config['report']['mail'], tests)
+            pass
 
     return 0
 

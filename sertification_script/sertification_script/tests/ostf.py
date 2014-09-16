@@ -19,7 +19,7 @@ class OSTFTests(base.BaseTests):
         started_at = time.time()
         finished_testruns = []
         while testruns:
-            if time.time() - started_at < self.timeout:
+            if time.time() - started_at < self.timeout
                 for testrun in testruns:
                     testrun_resp = api_request('/ostf/testruns/%s' % testrun['id'])
                     if testrun_resp['status'] != 'finished':

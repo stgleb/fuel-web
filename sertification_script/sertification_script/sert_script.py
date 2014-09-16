@@ -44,13 +44,13 @@ def find_node_by_requirements(nodes, requirements):
     return None
 
 
-def match_nodes(nodes_descriptions, timeout):
+def match_nodes(conn, nodes_descriptions, timeout):
     required_nodes_count = len(nodes_descriptions)
     logger.debug("Waiting for nodes {} to be discovered...".format(required_nodes_count))
     result = []
 
     for _ in range(timeout):
-        free_nodes = [node for node in fuel_rest_api.get_all_nodes()
+        free_nodes = [node for node in fuel_rest_api.get_all_nodes(conn)
                       if node.cluster is None]
 
         if len(free_nodes) < required_nodes_count:
@@ -140,43 +140,45 @@ def load_all_clusters(path):
     return res
 
 
-def deploy_cluster(cluster_desc):
-    cluster = fuel_rest_api.create_empty_cluster(cluster_desc)
+def deploy_cluster(conn, cluster_desc):
+    cluster = fuel_rest_api.create_empty_cluster(conn, cluster_desc)
     nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
-    #deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
+    deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
 
-    for node_desc, node in match_nodes(nodes_info, nodes_discover_timeout):
+    for node_desc, node in match_nodes(conn, nodes_info, nodes_discover_timeout):
         cluster.add_node(node, node_desc['roles'])
 
-    #cluster.deploy(deploy_timeout)
+    cluster.deploy(deploy_timeout)
     return cluster
 
 
 @contextlib.contextmanager
-def make_cluster(cluster, auto_delete=False):
+def make_cluster(conn, cluster, auto_delete=False):
     if auto_delete:
-        for cluster_obj in fuel_rest_api.get_clusters():
+        for cluster_obj in fuel_rest_api.get_all_clusters(conn):
             if cluster_obj.name == cluster['name']:
-                cluster_obj.delete_cluster()
+                cluster_obj.delete()
 
-    c = deploy_cluster(cluster)
+    c = deploy_cluster(conn, cluster)
     try:
         yield c
     finally:
-        c.delete_cluster()
+        c.delete()
 
 
-def with_cluster(config_path):
+def with_cluster(conn, config_path):
     cluster_desc = yaml.load(open(config_path).read())
 
     def decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
-            with make_cluster(cluster_desc) as cluster:
+            with make_cluster(conn, cluster_desc) as cluster:
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
                     kwargs['cluster_id'] = cluster.id
                 return f(*args, **kwargs)
         return wrapper
     return decorator
+
+

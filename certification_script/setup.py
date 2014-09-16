@@ -2,10 +2,10 @@ from setuptools import find_packages
 from setuptools import setup
 
 setup(
-    name='sertification_script',
+    name='certification_script',
     version='1.0',
-    description='Hardware sertification script',
-    long_description="""Hardware sertification script""",
+    description='Hardware certification script',
+    long_description="""Hardware certification script""",
     author='Mirantis Inc.',
     author_email='product@mirantis.com',
     url='http://mirantis.com',
@@ -13,7 +13,7 @@ setup(
     packages=find_packages(),
     entry_points={
         'console_scripts': [
-            'sert = sertification_script.main:main',
+            'cert = certification_script.main:main',
         ],
     }
 )

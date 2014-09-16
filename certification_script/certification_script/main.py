@@ -6,7 +6,7 @@ from optparse import OptionParser
 import yaml
 
 import fuel_rest_api
-import sert_script as ss
+import cert_script as cs
 
 sys.path.insert(0, '../lib/requests')
 
@@ -29,7 +29,7 @@ def parse_command_line():
                       help='config file path', default=DEFAULT_CONFIG_PATH)
 
     parser.add_option('-u', '--fuelurl',
-                      help='fuel rest url', default="http://10.20.0.2:8000/api/")
+                      help='fuel rest url', default="http://172.18.201.16:8000/api/")
 
     options, _ = parser.parse_args()
 
@@ -53,7 +53,7 @@ def setup_logger(config):
 
     logging.config.dictConfig(cfg)
 
-    ss.set_logger(logging.getLogger('clogger'))
+    cs.set_logger(logging.getLogger('clogger'))
     fuel_rest_api.set_logger(logging.getLogger('clogger'))
 
 
@@ -72,7 +72,7 @@ def main():
     path = os.path.join(os.path.dirname(DEFAULT_CONFIG_PATH),
                         config['tests']['clusters_directory'])
 
-    clusters = ss.load_all_clusters(path)
+    clusters = cs.load_all_clusters(path)
 
     tests_cfg = config['tests']['tests']
     for _, test_cfg in tests_cfg.iteritems():
@@ -80,24 +80,24 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        with ss.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-            # results = ss.run_all_tests(cluster_id,
-            #                            test_run_timeout,
-            #                            tests_to_run,
-            #                            config['fuelurl'])
+        with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
+            results = cs.run_all_tests(cluster_id,
+                                       test_run_timeout,
+                                       tests_to_run,
+                                       config['fuelurl'])
 
-            # tests = []
-            # for testset in results:
-            #     tests.extend(testset['tests'])
+            tests = []
+            for testset in results:
+                tests.extend(testset['tests'])
 
-            # failed_tests = [test for test in tests
-            #                 if test['status'] == 'failure']
+            failed_tests = [test for test in tests
+                            if test['status'] == 'failure']
 
-            # for test in failed_tests:
-            #     logger.debug(test['name'])
-            #     logger.debug(" "*10 + 'Failure message: ' + test['message'])
+            for test in failed_tests:
+                logger.debug(test['name'])
+                logger.debug(" "*10 + 'Failure message: ' + test['message'])
 
-            # ss.send_results(config['report']['mail'], tests)
+            cs.send_results(config['report']['mail'], tests)
             pass
 
     return 0

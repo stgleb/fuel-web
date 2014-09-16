@@ -207,7 +207,7 @@ def create_empty_cluster(conn, cluster_desc):
     data['mode'] = cluster_desc['deployment_mode']
     data['net_provider'] = cluster_desc['settings']['net_provider']
 
-    return Cluster(conn, **conn.post('clusters', data))
+    return Cluster(conn, **conn.do(path='clusters', method='post', params=data))
 
 
 def reflect_cluster(conn, cluster_id):

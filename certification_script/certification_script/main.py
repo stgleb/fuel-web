@@ -29,7 +29,7 @@ def parse_command_line():
                       help='config file path', default=DEFAULT_CONFIG_PATH)
 
     parser.add_option('-u', '--fuelurl',
-                      help='fuel rest url', default="http://172.18.201.16:8000/api/")
+                      help='fuel rest url', default="http://172.18.201.16:8000/")
 
     options, _ = parser.parse_args()
 

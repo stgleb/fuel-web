@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import time
@@ -231,6 +232,25 @@ def get_all_clusters(conn):
         yield Cluster(conn, **cluster_desc)
 
 
+def get_cluster_attributes(conn, cluster_id):
+    return conn.get(path="/api/clusters/{}/attributes/".format(cluster_id))
+
+
+def get_cluster_id(name, conn):
+    for cluster in get_all_clusters(conn):
+        if cluster.name == name:
+            logger.info('cluster name is %s' % name)
+            logger.info('cluster id is %s' % cluster["id"])
+            return cluster["id"]
+
+
+def update_cluster_attributes( conn, cluster_id, attrs):
+    return conn.put(
+    "/api/clusters/{}/attributes/".format(cluster_id),
+    attrs
+    )
+
+
 def create_empty_cluster(conn, cluster_desc):
     logger.info("Creating new cluster %s" % cluster_desc['name'])
     data = {}
@@ -241,7 +261,46 @@ def create_empty_cluster(conn, cluster_desc):
     data['mode'] = cluster_desc['deployment_mode']
     data['net_provider'] = cluster_desc['settings']['net_provider']
 
-    return Cluster(conn, **conn.post(path='api/clusters', params=data))
+    cluster_id = get_cluster_id(data['name'], conn)
+
+    if not cluster_id:
+        cluster = Cluster(conn, **conn.post(path='api/clusters', params=data))
+        cluster_id = cluster.id
+
+        settings = cluster_desc['settings']
+        attributes = get_cluster_attributes(conn, cluster_id)
+
+        for option in settings:
+            section = False
+
+            if option in ('sahara', 'murano', 'ceilometer'):
+                section = 'additional_components'
+
+            if option in ('volumes_ceph', 'images_ceph', 'ephemeral_ceph',
+                'objects_ceph', 'osd_pool_size', 'volumes_lvm',
+                'volumes_vmdk'):
+                section = 'storage'
+
+            if option in ('tenant', 'password', 'user'):
+                section = 'access'
+
+            if option in ('vc_password', 'cluster', 'host_ip', 'vc_user',
+                'use_vcenter'):
+                section = 'vcenter'
+
+            if section:
+                attributes['editable'][section][option]['value'] = \
+                    settings[option]
+
+
+            attributes['editable']['common']['debug']['value'] = \
+            os.environ.get('DEBUG_MODE', 'true') == 'true'
+            update_cluster_attributes(conn, cluster_id, attrs=attributes)
+
+    if not cluster_id:
+        raise Exception("Could not get cluster '%s'" % data['name'])
+
+    return cluster
 
 
 def reflect_cluster(conn, cluster_id):

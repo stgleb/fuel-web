@@ -133,7 +133,8 @@ def with_timeout(tout, message):
                 if func(*dt, **mp):
                     return
                 sleep_time = ctime + 1 - time.time()
-                time.sleep(sleep_time)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
                 ctime = time.time()
             raise RuntimeError("Timeout during " + message)
         return closure2
@@ -150,10 +151,20 @@ class Node(RestObj):
 
 class Cluster(RestObj):
 
-    add_node_call = PUT('nodes')
-    start_deploy = PUT('clusters/{id}/changes')
-    status = GET('clusters/{id}')
-    delete = DELETE('clusters/{id}')
+    add_node_call = PUT('api/nodes')
+    start_deploy = PUT('api/clusters/{id}/changes')
+    get_status = GET('api/clusters/{id}')
+    delete = DELETE('api/clusters/{id}')
+    get_tasks_status = GET("api/tasks?tasks={id}")
+
+    def check_exists(self):
+        try:
+            self.get_status()
+            return True
+        except urllib2.HTTPError as err:
+            if err.code == 404:
+                return False
+            raise
 
     def add_node(self, node, roles):
         data = {}
@@ -165,8 +176,7 @@ class Cluster(RestObj):
         self.add_node_call([data])
 
     def wait_operational(self, timeout):
-        print self.status
-        wo = lambda : self.status()['status'] == 'operational'
+        wo = lambda: self.get_status()['status'] == 'operational'
         with_timeout(timeout, "deploy cluster")(wo)()
 
     def deploy(self, timeout):
@@ -175,25 +185,26 @@ class Cluster(RestObj):
 
         self.wait_operational(timeout)
 
-        # for _ in range(timeout):
-        #     response = api_request('/api/tasks?tasks=' + str(self.id), 'GET')
+        def all_tasks_finished_ok(obj):
+            ok = True
+            for task in obj.get_tasks_status():
+                if task['status'] == 'error':
+                    raise Exception('Task execution error')
+                elif task['status'] != 'ready':
+                    ok = False
+            return ok
 
-        #     for task in response:
-        #         if task['status'] == 'error':
-        #             raise Exception('Task execution error')
-
-        #     time.sleep(1)
-
-        # raise Exception('Tasks timeout error')
+        wto = with_timeout(timeout, "wait deployment finished")
+        wto(all_tasks_finished_ok)(self)
 
 
 def get_all_nodes(conn):
-    for node_desc in conn.get('nodes'):
+    for node_desc in conn.get('api/nodes'):
         yield Node(conn, **node_desc)
 
 
 def get_all_clusters(conn):
-    for cluster_desc in conn.get('clusters'):
+    for cluster_desc in conn.get('api/clusters'):
         yield Cluster(conn, **cluster_desc)
 
 
@@ -207,7 +218,7 @@ def create_empty_cluster(conn, cluster_desc):
     data['mode'] = cluster_desc['deployment_mode']
     data['net_provider'] = cluster_desc['settings']['net_provider']
 
-    return Cluster(conn, **conn.do(path='clusters', method='post', params=data))
+    return Cluster(conn, **conn.post(path='api/clusters', params=data))
 
 
 def reflect_cluster(conn, cluster_id):

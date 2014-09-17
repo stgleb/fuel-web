@@ -1,7 +1,8 @@
+
 class BaseTests(object):
 
-    def __init__(self, fuel_base_url, cluster_id, timeout):
-        self.fuel_base_url = fuel_base_url
+    def __init__(self, conn, cluster_id, timeout):
+        self.conn = conn
         self.cluster_id = cluster_id
         self.timeout = timeout
 

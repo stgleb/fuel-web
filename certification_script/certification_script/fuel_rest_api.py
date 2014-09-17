@@ -149,6 +149,23 @@ class Node(RestObj):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
 
 
+class NodeList(list):
+
+    @property
+    def controllers(self):
+        return [node for node in self if 'controller' in node.roles]
+
+    @property
+    def computes(self):
+        return [node for node in self if 'compute' in node.roles]
+
+    @property
+    def cinders(self):
+        return [node for node in self if 'cinder' in node.roles]
+
+    #TODO(yportnova): Add all existing roles in Fuel
+
+
 class Cluster(RestObj):
 
     add_node_call = PUT('api/nodes')
@@ -156,6 +173,7 @@ class Cluster(RestObj):
     get_status = GET('api/clusters/{id}')
     delete = DELETE('api/clusters/{id}')
     get_tasks_status = GET("api/tasks?tasks={id}")
+    get_nodes = GET('/api/nodes?cluster_id={id}')
 
     def check_exists(self):
         try:
@@ -196,6 +214,11 @@ class Cluster(RestObj):
 
         wto = with_timeout(timeout, "wait deployment finished")
         wto(all_tasks_finished_ok)(self)
+
+    def reflect(self):
+        nodes = self.get_nodes()
+        self.nodes = NodeList([Node(self.__connection__, **node)
+                               for node in nodes])
 
 
 def get_all_nodes(conn):

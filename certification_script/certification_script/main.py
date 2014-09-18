@@ -80,11 +80,13 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-            results = cs.run_all_tests(cluster_id,
+        cluster_id = 7
+        #with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
+        if 7 == 7:
+            results = cs.run_all_tests(conn,
+                                       cluster_id,
                                        test_run_timeout,
-                                       tests_to_run,
-                                       config['fuelurl'])
+                                       tests_to_run)
 
             tests = []
             for testset in results:
@@ -98,7 +100,6 @@ def main():
                 logger.debug(" "*10 + 'Failure message: ' + test['message'])
 
             cs.send_results(config['report']['mail'], tests)
-            pass
 
     return 0
 

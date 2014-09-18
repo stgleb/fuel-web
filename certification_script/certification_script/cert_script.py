@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 import yaml
 
 import fuel_rest_api
-from tests import base
+from certification_script.tests import base
 
 logger = None
 
@@ -94,11 +94,12 @@ def find_test_classes():
     return test_classes
 
 
-def run_all_tests(cluster_id, timeout, tests_to_run, fuel_url):
+def run_all_tests(conn, cluster_id, timeout, tests_to_run):
     test_classes = find_test_classes()
+    print test_classes
     results = []
     for test_class in test_classes:
-        test_class_inst = test_class(fuel_url, cluster_id, timeout)
+        test_class_inst = test_class(conn, cluster_id, timeout)
         available_tests = test_class_inst.get_available_tests()
         results.extend(test_class_inst.run_tests(
             set(available_tests) & set(tests_to_run)))
@@ -182,5 +183,3 @@ def with_cluster(conn, config_path):
                 return f(*args, **kwargs)
         return wrapper
     return decorator
-
-

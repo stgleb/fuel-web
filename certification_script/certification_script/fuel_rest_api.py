@@ -151,20 +151,13 @@ class Node(RestObj):
 
 
 class NodeList(list):
+    allowed_roles = "controller,compute,cinder".split(',')
 
-    @property
-    def controllers(self):
-        return [node for node in self if 'controller' in node.roles]
-
-    @property
-    def computes(self):
-        return [node for node in self if 'compute' in node.roles]
-
-    @property
-    def cinders(self):
-        return [node for node in self if 'cinder' in node.roles]
-
-    #TODO(yportnova): Add all existing roles in Fuel
+    def __getattr__(self, name):
+        if name in self.allowed_roles:
+            for node in self:
+                if name in node.roles:
+                    yield node
 
 
 class Cluster(RestObj):
@@ -174,7 +167,11 @@ class Cluster(RestObj):
     get_status = GET('api/clusters/{id}')
     delete = DELETE('api/clusters/{id}')
     get_tasks_status = GET("api/tasks?tasks={id}")
-    get_nodes = GET('/api/nodes?cluster_id={id}')
+    load_nodes = GET('api/nodes?cluster_id={id}')
+
+    def __init__(self, *dt, **mp):
+        super(Cluster, self).__init__(*dt, **mp)
+        self.nodes = NodeList()
 
     def check_exists(self):
         try:
@@ -193,6 +190,7 @@ class Cluster(RestObj):
         data['pending_addition'] = True
         logger.debug("Adding node %s to cluster..." % node.id)
         self.add_node_call([data])
+        self.nodes.append(node)
 
     def wait_operational(self, timeout):
         wo = lambda: self.get_status()['status'] == 'operational'
@@ -216,10 +214,11 @@ class Cluster(RestObj):
         wto = with_timeout(timeout, "wait deployment finished")
         wto(all_tasks_finished_ok)(self)
 
-    def reflect(self):
-        nodes = self.get_nodes()
-        self.nodes = NodeList([Node(self.__connection__, **node)
-                               for node in nodes])
+
+def reflect_cluster(conn, cluster_id):
+    c = Cluster(conn, id=cluster_id)
+    c.nodes = c.load_nodes()
+    return c
 
 
 def get_all_nodes(conn):
@@ -240,15 +239,13 @@ def get_cluster_id(name, conn):
     for cluster in get_all_clusters(conn):
         if cluster.name == name:
             logger.info('cluster name is %s' % name)
-            logger.info('cluster id is %s' % cluster["id"])
-            return cluster["id"]
+            logger.info('cluster id is %s' % cluster.id)
+            return cluster.id
 
 
-def update_cluster_attributes( conn, cluster_id, attrs):
-    return conn.put(
-    "/api/clusters/{}/attributes/".format(cluster_id),
-    attrs
-    )
+def update_cluster_attributes(conn, cluster_id, attrs):
+    url = "/api/clusters/{}/attributes/".format(cluster_id)
+    return conn.put(url, attrs)
 
 
 def create_empty_cluster(conn, cluster_desc):
@@ -302,6 +299,3 @@ def create_empty_cluster(conn, cluster_desc):
 
     return cluster
 
-
-def reflect_cluster(conn, cluster_id):
-    pass

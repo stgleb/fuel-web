@@ -151,9 +151,9 @@ def get_fuel_info(url):
 
 class FuelInfo(RestObj):
 
-    get_nodes = GET('/api/nodes')
-    get_clusters = GET('/api/clusters')
-    get_cluster = GET('/api/clusters/{id}')
+    get_nodes = GET('api/nodes')
+    get_clusters = GET('api/clusters')
+    get_cluster = GET('api/clusters/{id}')
 
     @property
     def nodes(self):
@@ -256,8 +256,7 @@ def get_all_clusters(conn):
         yield Cluster(conn, **cluster_desc)
 
 
-def get_cluster_attributes(conn, cluster_id):
-    return conn.get(path="/api/clusters/{}/attributes/".format(cluster_id))
+get_cluster_attributes = GET('api/clusters/{cluster_id}/attributes')
 
 
 def get_cluster_id(name, conn):
@@ -268,12 +267,32 @@ def get_cluster_id(name, conn):
             return cluster.id
 
 
-def update_cluster_attributes(conn, cluster_id, attrs):
-    url = "/api/clusters/{}/attributes/".format(cluster_id)
-    return conn.put(url, attrs)
+update_cluster_attributes = PUT('api/clusters/{cluster_id}/attributes')
 
 
-def create_empty_cluster(conn, cluster_desc):
+sections = {
+    'sahara': 'additional_components',
+    'murano': 'additional_components',
+    'ceilometer': 'additional_components',
+    'volumes_ceph': 'storage',
+    'images_ceph': 'storage',
+    'ephemeral_ceph': 'storage',
+    'objects_ceph': 'storage',
+    'osd_pool_size': 'storage',
+    'volumes_lvm': 'storage',
+    'volumes_vmdk': 'storage',
+    'tenant': 'access',
+    'password': 'access',
+    'user': 'access',
+    'vc_password': 'vcenter',
+    'cluster': 'vcenter',
+    'host_ip': 'vcenter',
+    'vc_user': 'vcenter',
+    'use_vcenter': 'vcenter',
+}
+
+
+def create_empty_cluster(conn, cluster_desc, debug_mode=False):
     logger.info("Creating new cluster %s" % cluster_desc['name'])
     data = {}
     data['nodes'] = []
@@ -292,35 +311,16 @@ def create_empty_cluster(conn, cluster_desc):
         settings = cluster_desc['settings']
         attributes = get_cluster_attributes(conn, cluster_id)
 
-        for option in settings:
-            section = False
+        ed_attrs = attributes['editable']
+        for option, value in settings.items():
+            if option in sections:
+                attr_val_dict = ed_attrs[sections[option]][option]
+                attr_val_dict['value'] = value
 
-            if option in ('sahara', 'murano', 'ceilometer'):
-                section = 'additional_components'
-
-            if option in ('volumes_ceph', 'images_ceph', 'ephemeral_ceph',
-                'objects_ceph', 'osd_pool_size', 'volumes_lvm',
-                'volumes_vmdk'):
-                section = 'storage'
-
-            if option in ('tenant', 'password', 'user'):
-                section = 'access'
-
-            if option in ('vc_password', 'cluster', 'host_ip', 'vc_user',
-                'use_vcenter'):
-                section = 'vcenter'
-
-            if section:
-                attributes['editable'][section][option]['value'] = \
-                    settings[option]
-
-
-            attributes['editable']['common']['debug']['value'] = \
-            os.environ.get('DEBUG_MODE', 'true') == 'true'
-            update_cluster_attributes(conn, cluster_id, attrs=attributes)
+        ed_attrs['common']['debug']['value'] = debug_mode
+        update_cluster_attributes(conn, cluster_id, attrs=attributes)
 
     if not cluster_id:
         raise Exception("Could not get cluster '%s'" % data['name'])
 
     return cluster
-

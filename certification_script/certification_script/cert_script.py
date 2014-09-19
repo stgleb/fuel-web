@@ -13,9 +13,11 @@ import yaml
 import fuel_rest_api
 from certification_script.tests import base
 
-logger = None
 
 GB = 1024 * 1024 * 1024
+
+
+logger = None
 
 
 def set_logger(log):
@@ -46,7 +48,10 @@ def find_node_by_requirements(nodes, requirements):
 
 def match_nodes(conn, nodes_descriptions, timeout):
     required_nodes_count = len(nodes_descriptions)
-    logger.debug("Waiting for nodes {} to be discovered...".format(required_nodes_count))
+    msg = "Waiting for nodes {} to be discovered...".\
+        format(required_nodes_count)
+
+    logger.debug(msg)
     result = []
 
     for _ in range(timeout):
@@ -66,13 +71,16 @@ def match_nodes(conn, nodes_descriptions, timeout):
                     if node_mac in node_mac_mapping:
                         found_node = node_mac_mapping[node_mac]
                 elif 'requirements' in node_description:
-                    found_node = find_node_by_requirements(free_nodes, \
-                                    node_description['requirements'])
+                    found_node = find_node_by_requirements(free_nodes,
+                                        node_description['requirements'])
                 else:
                     found_node = free_nodes[0]
 
                 if found_node is None:
-                    print "Can't found node for requirements", node_mac, node_description.get('requirements')
+                    msg = "Can't found node for requirements: {}, {}"
+                    msg = msg.format(node_mac,
+                                     node_description.get('requirements'))
+                    logger.error(msg)
                     break
 
                 free_nodes.remove(found_node)
@@ -87,8 +95,7 @@ def find_test_classes():
     test_classes = []
     for loader, name, _ in pkgutil.iter_modules(['tests']):
         module = loader.find_module(name).load_module(name)
-        test_classes.extend([member for name, member in
-                             inspect.getmembers(module)
+        test_classes.extend([member for name, member in inspect.getmembers(module)
                              if inspect.isclass(member) and
                                 issubclass(member, base.BaseTests)])
     return test_classes

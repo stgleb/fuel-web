@@ -144,6 +144,32 @@ def with_timeout(tout, message):
 #-------------------------------  ORM -----------------------------------------
 
 
+def get_fuel_info(url):
+    conn = Urllib2HTTP(url)
+    return FuelInfo(conn)
+
+
+class FuelInfo(RestObj):
+
+    get_nodes = GET('/api/nodes')
+    get_clusters = GET('/api/clusters')
+    get_cluster = GET('/api/clusters/{id}')
+
+    @property
+    def nodes(self):
+        return [Node(self.__connection__, **node) for node in self.get_nodes()]
+
+    @property
+    def free_nodes(self):
+        return [Node(self.__connection__, **node) for node in self.get_nodes()
+                if not node['cluster']]
+
+    @property
+    def clusters(self):
+        return [Cluster(self.__connection__, **cluster) for cluster
+                in self.get_clusters()]
+
+
 class Node(RestObj):
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
@@ -242,7 +268,3 @@ def create_empty_cluster(conn, cluster_desc):
     data['net_provider'] = cluster_desc['settings']['net_provider']
 
     return Cluster(conn, **conn.post(path='api/clusters', params=data))
-
-
-def reflect_cluster(conn, cluster_id):
-    pass

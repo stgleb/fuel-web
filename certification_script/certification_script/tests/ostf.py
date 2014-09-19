@@ -1,4 +1,4 @@
-import base
+from certification_script.tests import base
 from certification_script.fuel_rest_api import with_timeout
 
 
@@ -13,13 +13,15 @@ class OSTFTests(base.BaseTests):
 
     def run_tests(self, tests):
         for test_name in tests:
-            run_id = self.run_test(test_name)['id']
+            print test_name
+
+            run_id = self.run_test(test_name)[0]['id']
 
             def check_ready(self, run_id):
                 status = self.conn.get('/ostf/testruns/{}'.format(run_id))
                 return status['status'] == 'finished'
 
-            wt = with_timeout("run test " + test_name, self.timeout)
+            wt = with_timeout(self.timeout, "run test " + test_name)
             wt(check_ready)(self, run_id)
 
             yield self.conn.get('/ostf/testruns/{}'.format(run_id))

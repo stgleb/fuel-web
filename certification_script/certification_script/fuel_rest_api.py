@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import time
@@ -176,7 +177,8 @@ class Node(RestObj):
 
 
 class NodeList(list):
-    allowed_roles = "controller,compute,cinder".split(',')
+    allowed_roles = ['controller', 'compute', 'cinder', 'ceph-osd', 'mongo',
+                     'zabbix-server']
 
     def __getattr__(self, name):
         if name in self.allowed_roles:

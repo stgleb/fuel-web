@@ -80,26 +80,25 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        cluster_id = 7
-        #with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-        if 7 == 7:
-            results = cs.run_all_tests(conn,
-                                       cluster_id,
-                                       test_run_timeout,
-                                       tests_to_run)
+        with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
+            if 7 == 7:
+                results = cs.run_all_tests(conn,
+                                           cluster_id,
+                                           test_run_timeout,
+                                           tests_to_run)
 
-            tests = []
-            for testset in results:
-                tests.extend(testset['tests'])
+                tests = []
+                for testset in results:
+                    tests.extend(testset['tests'])
 
-            failed_tests = [test for test in tests
-                            if test['status'] == 'failure']
+                failed_tests = [test for test in tests
+                                if test['status'] == 'failure']
 
-            for test in failed_tests:
-                logger.debug(test['name'])
-                logger.debug(" "*10 + 'Failure message: ' + test['message'])
+                for test in failed_tests:
+                    logger.debug(test['name'])
+                    logger.debug(" "*10 + 'Failure message: ' + test['message'])
 
-            cs.send_results(config['report']['mail'], tests)
+                cs.send_results(config['report']['mail'], tests)
 
     return 0
 

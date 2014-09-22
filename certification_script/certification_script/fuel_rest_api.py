@@ -258,7 +258,7 @@ def get_all_clusters(conn):
         yield Cluster(conn, **cluster_desc)
 
 
-get_cluster_attributes = GET('api/clusters/{cluster_id}/attributes')
+get_cluster_attributes = GET('api/clusters/{id}/attributes')
 
 
 def get_cluster_id(name, conn):
@@ -269,7 +269,7 @@ def get_cluster_id(name, conn):
             return cluster.id
 
 
-update_cluster_attributes = PUT('api/clusters/{cluster_id}/attributes')
+update_cluster_attributes = PUT('api/clusters/{id}/attributes')
 
 
 sections = {
@@ -311,7 +311,7 @@ def create_empty_cluster(conn, cluster_desc, debug_mode=False):
         cluster_id = cluster.id
 
         settings = cluster_desc['settings']
-        attributes = get_cluster_attributes(conn, cluster_id)
+        attributes = get_cluster_attributes(cluster)
 
         ed_attrs = attributes['editable']
         for option, value in settings.items():
@@ -320,7 +320,7 @@ def create_empty_cluster(conn, cluster_desc, debug_mode=False):
                 attr_val_dict['value'] = value
 
         ed_attrs['common']['debug']['value'] = debug_mode
-        update_cluster_attributes(conn, cluster_id, attrs=attributes)
+        update_cluster_attributes(cluster, attrs=attributes)
 
     if not cluster_id:
         raise Exception("Could not get cluster '%s'" % data['name'])

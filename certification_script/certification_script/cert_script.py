@@ -11,7 +11,7 @@ from email.mime.text import MIMEText
 import yaml
 
 import fuel_rest_api
-from certification_script.tests import base
+from tests import base
 
 
 GB = 1024 * 1024 * 1024
@@ -167,7 +167,7 @@ def make_cluster(conn, cluster, auto_delete=False):
         for cluster_obj in fuel_rest_api.get_all_clusters(conn):
             if cluster_obj.name == cluster['name']:
                 cluster_obj.delete()
-                wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
+                wd = fuel_rest_api.with_timeout("Wait cluster deleted", 60)
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
     c = deploy_cluster(conn, cluster)

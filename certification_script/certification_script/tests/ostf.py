@@ -1,5 +1,5 @@
-from certification_script.tests import base
-from certification_script.fuel_rest_api import with_timeout
+import base
+from fuel_rest_api import with_timeout
 
 
 class OSTFTests(base.BaseTests):

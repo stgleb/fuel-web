@@ -71,8 +71,8 @@ def match_nodes(conn, nodes_descriptions, timeout):
                     if node_mac in node_mac_mapping:
                         found_node = node_mac_mapping[node_mac]
                 elif 'requirements' in node_description:
-                    found_node = find_node_by_requirements(free_nodes,
-                                        node_description['requirements'])
+                    found_node = find_node_by_requirements(
+                        free_nodes, node_description['requirements'])
                 else:
                     found_node = free_nodes[0]
 
@@ -95,9 +95,10 @@ def find_test_classes():
     test_classes = []
     for loader, name, _ in pkgutil.iter_modules(['tests']):
         module = loader.find_module(name).load_module(name)
-        test_classes.extend([member for name, member in inspect.getmembers(module)
+        test_classes.extend([member for name, member in
+                             inspect.getmembers(module)
                              if inspect.isclass(member) and
-                                issubclass(member, base.BaseTests)])
+                             issubclass(member, base.BaseTests)])
     return test_classes
 
 
@@ -154,7 +155,8 @@ def deploy_cluster(conn, cluster_desc):
     deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
 
-    for node_desc, node in match_nodes(conn, nodes_info, nodes_discover_timeout):
+    for node_desc, node in match_nodes(conn, nodes_info,
+                                       nodes_discover_timeout):
         cluster.add_node(node, node_desc['roles'])
 
     cluster.deploy(deploy_timeout)

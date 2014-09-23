@@ -29,7 +29,8 @@ def parse_command_line():
                       help='config file path', default=DEFAULT_CONFIG_PATH)
 
     parser.add_option('-u', '--fuelurl',
-                      help='fuel rest url', default="http://172.18.201.16:8000/")
+                      help='fuel rest url',
+                      default="http://172.18.201.16:8000/")
 
     options, _ = parser.parse_args()
 
@@ -96,7 +97,8 @@ def main():
 
                 for test in failed_tests:
                     logger.debug(test['name'])
-                    logger.debug(" "*10 + 'Failure message: ' + test['message'])
+                    logger.debug(" "*10 + 'Failure message: '
+                                 + test['message'])
 
                 cs.send_results(config['report']['mail'], tests)
 

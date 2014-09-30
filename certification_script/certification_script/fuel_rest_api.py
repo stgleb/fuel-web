@@ -158,22 +158,34 @@ class FuelInfo(RestObj):
 
     @property
     def nodes(self):
-        return [Node(self.__connection__, **node) for node in self.get_nodes()]
+        return NodeList([Node(self.__connection__, **node) for node
+                         in self.get_nodes()])
 
     @property
     def free_nodes(self):
-        return [Node(self.__connection__, **node) for node in self.get_nodes()
-                if not node['cluster']]
+        return NodeList([Node(self.__connection__, **node) for node in
+                         self.get_nodes() if not node['cluster']])
 
     @property
     def clusters(self):
-        return [Cluster(self.__connection__, **cluster) for cluster
-                in self.get_clusters()]
+        return NodeList([Cluster(self.__connection__, **cluster) for cluster
+                         in self.get_clusters()])
 
 
 class Node(RestObj):
+
+    get_info = GET('/api/nodes/{id}')
+
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
+
+    def get_network_data(self):
+        node_info = self.get_info()
+        return node_info.get('network_data')
+
+    def get_roles(self):
+        node_info = self.get_info()
+        return node_info.get('roles'), node_info.get('pending_roles')
 
 
 class NodeList(list):
@@ -240,6 +252,9 @@ class Cluster(RestObj):
 
         wto = with_timeout(timeout, "wait deployment finished")
         wto(all_tasks_finished_ok)(self)
+
+    def dump_changes(self):
+        pass
 
 
 def reflect_cluster(conn, cluster_id):

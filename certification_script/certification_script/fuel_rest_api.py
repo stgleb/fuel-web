@@ -175,6 +175,21 @@ class FuelInfo(RestObj):
 class Node(RestObj):
 
     get_info = GET('/api/nodes/{id}')
+    network_roles = GET('/api/nodes/{id}/interfaces')
+
+    @property
+    def networks(self):
+        info = self.network_roles()
+        result = []
+
+        for i in info:
+            result.append(i['assigned_networks'])
+
+        return result
+
+    @networks.setter
+    def networks(self, val):
+        pass
 
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])

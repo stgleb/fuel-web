@@ -184,13 +184,26 @@ class Node(RestObj):
         result = {}
 
         for i in info:
-            result[i['mac']] = i['assigned_networks']
+            result[i['name']] = i
 
         return result
 
     @networks.setter
     def networks(self, mapping):
-        pass
+        info = self.network_roles()
+
+        for i in range(len(info)):
+            info[i] = mapping[info[i]['name']]
+
+        info[0]['assigned_networks'], info[1]['assigned_networks'] = info[1]['assigned_networks'], info[0]['assigned_networks']
+        url = '/api/nodes/{id}/interfaces'
+        params = {'id': self.id}
+        result_url = url.format(**params)
+
+        self.__connection__.do('put', result_url, params=info)
+
+
+
 
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])

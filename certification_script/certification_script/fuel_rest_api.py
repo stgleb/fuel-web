@@ -176,19 +176,20 @@ class Node(RestObj):
 
     get_info = GET('/api/nodes/{id}')
     network_roles = GET('/api/nodes/{id}/interfaces')
+    network_roles_update = PUT('/api/nodes/{id}/interfaces')
 
     @property
     def networks(self):
         info = self.network_roles()
-        result = []
+        result = {}
 
         for i in info:
-            result.append(i['assigned_networks'])
+            result[i['mac']] = i['assigned_networks']
 
         return result
 
     @networks.setter
-    def networks(self, val):
+    def networks(self, mapping):
         pass
 
     def set_node_name(self, name):

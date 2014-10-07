@@ -15,3 +15,11 @@ if __name__ == '__main__':
     for n in fuel_info.nodes:
         print n.id
         print n.networks
+
+    node = fuel_info.nodes[0]
+    mapping = node.networks
+
+    keys = mapping.keys()
+    mapping[keys[0]], mapping[keys[1]] = mapping[keys[1]], mapping[keys[0]]
+
+    node.networks = mapping

@@ -9,8 +9,15 @@ nodes:
     node1:
       roles:
         - "controller"
-      # mac: "08:00:27:63:D8:92"
       dns_name: controller1
+      interfaces:
+        eth0:
+          networks:
+            - public
+            - management
+            - fixed
+            - storage
+            - fuelweb_admin
     node2:
       roles:
         - "compute"

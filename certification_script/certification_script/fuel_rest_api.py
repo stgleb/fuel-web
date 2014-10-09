@@ -202,9 +202,6 @@ class Node(RestObj):
 
         self.__connection__.do('put', result_url, params=info)
 
-
-
-
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
 

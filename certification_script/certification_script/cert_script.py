@@ -157,7 +157,10 @@ def deploy_cluster(conn, cluster_desc):
 
     for node_desc, node in match_nodes(conn, nodes_info,
                                        nodes_discover_timeout):
-        cluster.add_node(node, node_desc['roles'])
+        if 'interfaces' in node_desc:
+            cluster.add_node(node, node_desc['roles'], node_desc['interfaces'])
+        else:
+            cluster.add_node(node, node_desc['roles'])
 
     cluster.deploy(deploy_timeout)
     return cluster

@@ -195,7 +195,6 @@ class Node(RestObj):
         for i in range(len(info)):
             info[i] = mapping[info[i]['name']]
 
-        info[0]['assigned_networks'], info[1]['assigned_networks'] = info[1]['assigned_networks'], info[0]['assigned_networks']
         url = '/api/nodes/{id}/interfaces'
         params = {'id': self.id}
         result_url = url.format(**params)
@@ -234,9 +233,11 @@ class Cluster(RestObj):
     get_tasks_status = GET("api/tasks?tasks={id}")
     load_nodes = GET('api/nodes?cluster_id={id}')
 
+
     def __init__(self, *dt, **mp):
         super(Cluster, self).__init__(*dt, **mp)
         self.nodes = NodeList()
+        self.network_roles = {}
 
     def check_exists(self):
         try:
@@ -247,7 +248,7 @@ class Cluster(RestObj):
                 return False
             raise
 
-    def add_node(self, node, roles):
+    def add_node(self, node, roles, interfaces=None):
         data = {}
         data['pending_roles'] = roles
         data['cluster_id'] = self.id
@@ -256,6 +257,30 @@ class Cluster(RestObj):
         logger.debug("Adding node %s to cluster..." % node.id)
         self.add_node_call([data])
         self.nodes.append(node)
+
+        if not interfaces is None:
+            for iface in node.networks.keys():
+                if node.networks[iface]['name'] not in self.network_roles:
+                    for role in node.networks[iface]['assigned_networks']:
+                        self.network_roles[role['name']] = role
+
+            node_networks = node.networks
+
+            for iface in node_networks.keys():
+                node_networks[iface]['assigned_networks'] = []
+
+
+
+            for iface in interfaces:
+                for role in interfaces[iface]['networks']:
+                    node_networks[iface]['assigned_networks'].append(self.network_roles[role])
+
+            node.networks = node_networks
+
+
+
+
+
 
     def wait_operational(self, timeout):
         wo = lambda: self.get_status()['status'] == 'operational'

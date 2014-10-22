@@ -32,12 +32,19 @@ def parse_command_line():
                       help='fuel rest url',
                       default="http://172.18.201.16:8000/")
 
+    parser.add_option('-d', '--deploy-only',
+                      help='only deploy cluster', 
+                      destination="deploy_only",
+                      action='store_true',
+                      default=False)
+
     options, _ = parser.parse_args()
 
     result = {}
     result['password'] = options.password
     result['config'] = options.config
     result['fuelurl'] = options.fuelurl
+    result['deploy_only'] = options.deploy_only
 
     return result
 
@@ -81,26 +88,29 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-            if 7 == 7:
-                results = cs.run_all_tests(conn,
-                                           cluster_id,
-                                           test_run_timeout,
-                                           tests_to_run)
+        if args['depploy_only']:
+            cs.deploy_cluster(conn, cluster)
+        else:
+            with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
+                if 7 == 7:
+                    results = cs.run_all_tests(conn,
+                                               cluster_id,
+                                               test_run_timeout,
+                                               tests_to_run)
 
-                tests = []
-                for testset in results:
-                    tests.extend(testset['tests'])
+                    tests = []
+                    for testset in results:
+                        tests.extend(testset['tests'])
 
-                failed_tests = [test for test in tests
-                                if test['status'] == 'failure']
+                    failed_tests = [test for test in tests
+                                    if test['status'] == 'failure']
 
-                for test in failed_tests:
-                    logger.debug(test['name'])
-                    logger.debug(" "*10 + 'Failure message: '
-                                 + test['message'])
+                    for test in failed_tests:
+                        logger.debug(test['name'])
+                        logger.debug(" "*10 + 'Failure message: '
+                                     + test['message'])
 
-                cs.send_results(config['report']['mail'], tests)
+                    cs.send_results(config['report']['mail'], tests)
 
     return 0
 

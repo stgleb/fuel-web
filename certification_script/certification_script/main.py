@@ -20,7 +20,7 @@ def parse_config(cfg_path):
 
 
 def parse_command_line():
-    parser = OptionParser("usage: %prog [options] arg1")
+    parser = OptionParser("usage: %prog [options]")
 
     parser.add_option('-p', '--password',
                       help='password for email', default=None)
@@ -34,7 +34,7 @@ def parse_command_line():
 
     parser.add_option('-d', '--deploy-only',
                       help='only deploy cluster', 
-                      destination="deploy_only",
+                      dest="deploy_only",
                       action='store_true',
                       default=False)
 

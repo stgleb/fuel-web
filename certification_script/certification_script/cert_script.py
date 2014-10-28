@@ -176,9 +176,11 @@ def make_cluster(conn, cluster, auto_delete=False):
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
     c = deploy_cluster(conn, cluster)
+
     try:
         yield c
     finally:
+        c.get_cluster_state()
         c.delete()
 
 

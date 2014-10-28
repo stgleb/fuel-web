@@ -54,12 +54,12 @@ class Urllib2HTTP(object):
             request.add_header('Content-Type', 'application/json')
 
         request.get_method = lambda: method.upper()
-        responce = urllib2.urlopen(request)
+        response = urllib2.urlopen(request)
 
-        if responce.code < 200 or responce.code > 209:
+        if response.code < 200 or response.code > 209:
             raise IndexError(url)
 
-        content = responce.read()
+        content = response.read()
 
         if '' == content:
             return None
@@ -225,6 +225,37 @@ class NodeList(list):
             return [node for node in self if name in node.roles]
 
 
+def get_cluster_state(base_url, id):
+        urllib = Urllib2HTTP(base_url)
+        status = {}
+        c = urllib.do('get', 'api/clusters/' + str(id))
+
+        status['name'] = c['name']
+        status['deployment_mode'] = c['mode']
+        status['release'] = c['release_id']
+        status['settings'] = {}
+        status['settings']['net_provider'] = c['net_provider']
+
+        status['nodes'] = {}
+        cnt = 1
+        nodes = urllib.do('get', 'api/nodes')
+
+        for node in nodes:
+            if node['cluster'] == id:
+                cur_node = 'node' + str(cnt)
+                status['nodes'][cur_node] = {}
+                status['nodes'][cur_node]['requirements'] = {}
+                status['nodes'][cur_node]['roles'] = node['roles']
+
+                if 'controller' in status['nodes'][cur_node]['roles']:
+                    status['nodes'][cur_node]['dns_name'] = 'controller' + str(cnt)
+                cnt += 1
+
+        status['timeout'] = 3600
+
+        return status
+
+
 class Cluster(RestObj):
 
     add_node_call = PUT('api/nodes')
@@ -240,6 +271,37 @@ class Cluster(RestObj):
         super(Cluster, self).__init__(*dt, **mp)
         self.nodes = NodeList()
         self.network_roles = {}
+
+    def get_cluster_state(self):
+        status = {}
+        c = self.get_status()
+
+        status['name'] = c['name']
+        status['deployment_mode'] = c['mode']
+        status['release'] = c['release_id']
+        status['settings'] = {}
+        status['settings']['net_provider'] = c['net_provider']
+
+        status['nodes'] = {}
+
+        cnt = 1
+
+        nodes = self.nodes
+        for node in nodes:
+            cur_node = 'node' + str(cnt)
+            status['nodes'][cur_node] = {}
+            status['nodes'][cur_node]['requirements'] = {}
+            status['nodes'][cur_node]['roles'] = node.pending_roles
+
+            if 'controller' in status['nodes'][cur_node]['roles']:
+                status['nodes'][cur_node]['dns_name'] = 'controller' + str(cnt)
+
+            cnt += 1
+
+        status['timeout'] = 3600
+
+
+
 
     def check_exists(self):
         try:

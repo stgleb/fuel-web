@@ -20,7 +20,7 @@ def parse_config(cfg_path):
 
 
 def parse_command_line():
-    parser = OptionParser("usage: %prog [options] arg1")
+    parser = OptionParser("usage: %prog [options]")
 
     parser.add_option('-p', '--password',
                       help='password for email', default=None)
@@ -33,20 +33,12 @@ def parse_command_line():
                       default="http://172.18.201.16:8000/")
 
     parser.add_option('-d', '--deploy-only',
-                      help='only deploy cluster', 
-                      destination="deploy_only",
-                      action='store_true',
-                      default=False)
+                      help='only deploy cluster',
+                      dest="deploy_only")
 
     options, _ = parser.parse_args()
 
-    result = {}
-    result['password'] = options.password
-    result['config'] = options.config
-    result['fuelurl'] = options.fuelurl
-    result['deploy_only'] = options.deploy_only
-
-    return result
+    return options.__dict__
 
 
 def merge_config(config, command_line):
@@ -82,38 +74,58 @@ def main():
 
     clusters = cs.load_all_clusters(path)
 
+    if 'deploy_only' in args:
+        cluster_name_or_file = args['deploy_only']
+
+        file_exists = os.path.exists(cluster_name_or_file)
+        if cluster_name_or_file.endswith('.yaml') and file_exists:
+            try:
+                cluster = yaml.load(open(cluster_name_or_file).read())
+            except Exception:
+                print "Failed to load cluster from {}".format(cluster_name_or_file)
+                raise
+        else:
+            try:
+                cluster = clusters[cluster_name_or_file]
+            except KeyError:
+                print "Error: No cluster with name {} found".format(cluster_name_or_file)
+                return 1
+
+        cs.deploy_cluster(conn, cluster)
+        return 0
+
     tests_cfg = config['tests']['tests']
     for _, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']
 
-        if args['depploy_only']:
+        if args['deploy_only']:
             cs.deploy_cluster(conn, cluster)
         else:
             with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-                if 7 == 7:
-                    results = cs.run_all_tests(conn,
-                                               cluster_id,
-                                               test_run_timeout,
-                                               tests_to_run)
+                results = cs.run_all_tests(conn,
+                                           cluster_id,
+                                           test_run_timeout,
+                                           tests_to_run)
 
-                    tests = []
-                    for testset in results:
-                        tests.extend(testset['tests'])
+                tests = []
+                for testset in results:
+                    tests.extend(testset['tests'])
 
-                    failed_tests = [test for test in tests
-                                    if test['status'] == 'failure']
+                failed_tests = [test for test in tests
+                                if test['status'] == 'failure']
 
-                    for test in failed_tests:
-                        logger.debug(test['name'])
-                        logger.debug(" "*10 + 'Failure message: '
-                                     + test['message'])
+                for test in failed_tests:
+                    logger.debug(test['name'])
+                    logger.debug(" "*10 + 'Failure message: '
+                                 + test['message'])
 
-                    cs.send_results(config['report']['mail'], tests)
+                cs.send_results(config['report']['mail'], tests)
 
     return 0
 
 
 if __name__ == "__main__":
+    
     exit(main())

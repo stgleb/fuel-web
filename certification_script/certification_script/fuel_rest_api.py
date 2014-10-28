@@ -45,7 +45,7 @@ class Urllib2HTTP(object):
             data_json = json.dumps(params)
 
         if self.echo:
-            print "HTTP: {} {}".format(method.upper(), url)
+            logger.info("HTTP: {} {}".format(method.upper(), url))
 
         request = urllib2.Request(url,
                                   data=data_json,
@@ -94,6 +94,9 @@ class RestObj(object):
             if k != 'name':
                 res.append("    {}={!r}".format(k, v))
         return "\n".join(res)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
 
 
 def make_call(method, url):
@@ -168,8 +171,8 @@ class FuelInfo(RestObj):
 
     @property
     def clusters(self):
-        return NodeList([Cluster(self.__connection__, **cluster) for cluster
-                         in self.get_clusters()])
+        return [Cluster(self.__connection__, **cluster) for cluster
+                in self.get_clusters()]
 
 
 class Node(RestObj):
@@ -219,9 +222,7 @@ class NodeList(list):
 
     def __getattr__(self, name):
         if name in self.allowed_roles:
-            for node in self:
-                if name in node.roles:
-                    yield node
+            return [node for node in self if name in node.roles]
 
 
 class Cluster(RestObj):
@@ -232,7 +233,8 @@ class Cluster(RestObj):
     delete = DELETE('api/clusters/{id}')
     get_tasks_status = GET("api/tasks?tasks={id}")
     load_nodes = GET('api/nodes?cluster_id={id}')
-
+    get_networks = GET('api/clusters/{id}/network_configuration/{net_provider}')
+    configure_networks = PUT('api/clusters/{id}/network_configuration/{net_provider}')
 
     def __init__(self, *dt, **mp):
         super(Cluster, self).__init__(*dt, **mp)
@@ -277,11 +279,6 @@ class Cluster(RestObj):
 
             node.networks = node_networks
 
-
-
-
-
-
     def wait_operational(self, timeout):
         wo = lambda: self.get_status()['status'] == 'operational'
         with_timeout(timeout, "deploy cluster")(wo)()
@@ -307,10 +304,22 @@ class Cluster(RestObj):
     def dump_changes(self):
         dump_config(self.__connection__.root_url, self.id, self.name)
 
+    def set_networks(self, net_description):
+        configuration = self.get_networks()
+        current_networks = configuration['networks']
+        parameters = configuration['networking_parameters']
+        for net in current_networks:
+            net_desc = net_description['networks'].get(net['name'])
+            if net_desc:
+                net.update(net_desc)
+        if net_description.get('networking_parameters'):
+            parameters.update(net_description['networking_parameters'])
+        self.configure_networks(**configuration)
+
 
 def reflect_cluster(conn, cluster_id):
     c = Cluster(conn, id=cluster_id)
-    c.nodes = c.load_nodes()
+    c.nodes = NodeList([Node(conn, **data) for data in c.load_nodes()])
     return c
 
 
@@ -367,28 +376,22 @@ def create_empty_cluster(conn, cluster_desc, debug_mode=False):
     data['tasks'] = []
     data['name'] = cluster_desc['name']
     data['release'] = cluster_desc['release']
-    data['mode'] = cluster_desc['deployment_mode']
-    data['net_provider'] = cluster_desc['settings']['net_provider']
+    data['mode'] = cluster_desc.get('deployment_mode')
+    data['net_provider'] = cluster_desc['settings'].get('net_provider')
 
-    cluster_id = get_cluster_id(data['name'], conn)
+    params = conn.post(path='/api/clusters', params=data)
+    cluster = Cluster(conn, **params)
 
-    if not cluster_id:
-        cluster = Cluster(conn, **conn.post(path='api/clusters', params=data))
-        cluster_id = cluster.id
+    settings = cluster_desc['settings']
+    attributes = get_cluster_attributes(cluster)
 
-        settings = cluster_desc['settings']
-        attributes = get_cluster_attributes(cluster)
+    ed_attrs = attributes['editable']
+    for option, value in settings.items():
+        if option in sections:
+            attr_val_dict = ed_attrs[sections[option]][option]
+            attr_val_dict['value'] = value
 
-        ed_attrs = attributes['editable']
-        for option, value in settings.items():
-            if option in sections:
-                attr_val_dict = ed_attrs[sections[option]][option]
-                attr_val_dict['value'] = value
-
-        ed_attrs['common']['debug']['value'] = debug_mode
-        update_cluster_attributes(cluster, attrs=attributes)
-
-    if not cluster_id:
-        raise Exception("Could not get cluster '%s'" % data['name'])
+    ed_attrs['common']['debug']['value'] = debug_mode
+    update_cluster_attributes(cluster, attrs=attributes)
 
     return cluster

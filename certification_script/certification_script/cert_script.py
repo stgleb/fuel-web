@@ -197,3 +197,52 @@ def with_cluster(conn, config_path):
                 return f(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def traverse(root):
+    for k in root.keys():
+        if isinstance(root[k], dict):
+            traverse(root[k])
+        else:
+            if isinstance(root[k], basestring):
+                root[k] = root[k].encode('utf8')
+
+            if isinstance(root[k], list):
+                for e in range(len(root[k])):
+                    if isinstance(root[k][e], basestring):
+                        root[k] = root[k][e].encode('utf8')
+                    else:
+                        traverse(e)
+
+def dump_config(base_url, id, file_name):
+        urllib = fuel_rest_api.Urllib2HTTP(base_url)
+        status = {}
+        c = urllib.do('get', 'api/clusters/' + str(id))
+
+        status['name'] = c['name']
+        status['deployment_mode'] = c['mode']
+        status['release'] = c['release_id']
+        status['settings'] = {}
+        status['settings']['net_provider'] = c['net_provider']
+
+        status['nodes'] = {}
+        cnt = 1
+        nodes = urllib.do('get', 'api/nodes')
+
+        for node in nodes:
+            if node['cluster'] == id:
+                cur_node = 'node' + str(cnt)
+                status['nodes'][cur_node] = {}
+                status['nodes'][cur_node]['requirements'] = {}
+                status['nodes'][cur_node]['roles'] = node['roles']
+
+                if 'controller' in status['nodes'][cur_node]['roles']:
+                    status['nodes'][cur_node]['dns_name'] = 'controller' + str(cnt)
+                cnt += 1
+
+        status['timeout'] = 3600
+
+        traverse(status)
+        print yaml.dump(status)
+        with open(file_name + '.yaml', 'w') as file:
+            file.write(yaml.dump(status))

@@ -4,9 +4,9 @@ import logging.config
 from optparse import OptionParser
 
 import yaml
-
 import fuel_rest_api
 import cert_script as cs
+from cert_script import *
 
 sys.path.insert(0, '../lib/requests')
 
@@ -127,5 +127,6 @@ def main():
 
 
 if __name__ == "__main__":
-    
-    exit(main())
+    import cert_script
+    dump_config('http://172.18.201.16:8000', 101, 'clusters/blabla')
+    # exit(main())

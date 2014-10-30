@@ -151,6 +151,7 @@ def load_all_clusters(path):
 
 def deploy_cluster(conn, cluster_desc):
     cluster = fuel_rest_api.create_empty_cluster(conn, cluster_desc)
+    cluster.set_networks(cluster_desc['network_configuration'])
     nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']

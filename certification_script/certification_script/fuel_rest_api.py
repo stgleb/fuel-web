@@ -215,6 +215,12 @@ class Node(RestObj):
         node_info = self.get_info()
         return node_info.get('roles'), node_info.get('pending_roles')
 
+    def get_ip(self, network='public'):
+        nets = self.get_network_data()
+        for net in nets:
+            if net['name'] == network:
+                return net['ip']
+        raise Exception('Network %s not found' % network)
 
 class NodeList(list):
     allowed_roles = ['controller', 'compute', 'cinder', 'ceph-osd', 'mongo',

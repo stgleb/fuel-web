@@ -195,6 +195,8 @@ def with_cluster(conn, config_path):
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
                     kwargs['cluster_id'] = cluster.id
+                elif 'cluster' in arg_spec.args[len(arg_spec.defaults) - 1:]:
+                    kwargs['cluster'] = cluster
                 return f(*args, **kwargs)
         return wrapper
     return decorator

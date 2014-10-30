@@ -151,6 +151,7 @@ def load_all_clusters(path):
 
 def deploy_cluster(conn, cluster_desc):
     cluster = fuel_rest_api.create_empty_cluster(conn, cluster_desc)
+    cluster.set_networks(cluster_desc['network_configuration'])
     nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
@@ -194,6 +195,8 @@ def with_cluster(conn, config_path):
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
                     kwargs['cluster_id'] = cluster.id
+                elif 'cluster' in arg_spec.args[len(arg_spec.defaults) - 1:]:
+                    kwargs['cluster'] = cluster
                 return f(*args, **kwargs)
         return wrapper
     return decorator

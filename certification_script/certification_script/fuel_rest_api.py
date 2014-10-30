@@ -4,7 +4,7 @@ import json
 import time
 import urllib2
 from functools import partial, wraps
-from certification_script.certification_script.cert_script import *
+from certification_script.cert_script import *
 
 logger = None
 

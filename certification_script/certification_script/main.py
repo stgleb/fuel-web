@@ -74,7 +74,7 @@ def main():
 
     clusters = cs.load_all_clusters(path)
 
-    if 'deploy_only' in args:
+    if args.get('deploy_only') is not None:
         cluster_name_or_file = args['deploy_only']
 
         file_exists = os.path.exists(cluster_name_or_file)
@@ -127,6 +127,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import cert_script
-    dump_config('http://172.18.201.16:8000', 101, 'clusters/blabla')
-    # exit(main())
+    exit(main())

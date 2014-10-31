@@ -182,7 +182,8 @@ def make_cluster(conn, cluster, auto_delete=False):
 
         yield c
     finally:
-        c.delete()
+        #c.delete()
+        pass
 
 
 def with_cluster(conn, config_path):

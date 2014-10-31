@@ -219,8 +219,12 @@ class Node(RestObj):
         nets = self.get_network_data()
         for net in nets:
             if net['name'] == network:
-                return net['ip']
+                iface_name = net['interface']
+                for iface in self.get_info()['meta']['interfaces']:
+                    if iface['name'] == iface_name:
+                        return iface['ip']
         raise Exception('Network %s not found' % network)
+
 
 class NodeList(list):
     allowed_roles = ['controller', 'compute', 'cinder', 'ceph-osd', 'mongo',

@@ -219,7 +219,7 @@ class Node(RestObj):
         nets = self.get_network_data()
         for net in nets:
             if net['name'] == network:
-                iface_name = net['interface']
+                iface_name = net['dev']
                 for iface in self.get_info()['meta']['interfaces']:
                     if iface['name'] == iface_name:
                         return iface['ip']

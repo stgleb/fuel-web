@@ -4,7 +4,12 @@ import json
 import time
 import urllib2
 from functools import partial, wraps
+import base64
 from certification_script.cert_script import *
+
+from keystoneclient.v2_0 import Client as keystoneclient
+from keystoneclient import exceptions
+
 
 logger = None
 
@@ -70,6 +75,36 @@ class Urllib2HTTP(object):
         if name in self.allowed_methods:
             return partial(self.do, name)
         raise AttributeError(name)
+
+
+class KeystoneAuth(Urllib2HTTP):
+    def __init__(self, root_url, creds, headers=None, echo=False,
+                 admin_node_ip=None):
+        super(KeystoneAuth, self).__init__(root_url, headers, echo)
+        self.keystone_url = "http://{0}:5000/v2.0".format(admin_node_ip)
+        self.keystone = keystoneclient(
+            auth_url=self.keystone_url, **creds)
+        self.refresh_token()
+
+    def refresh_token(self):
+        try:
+            self.keystone.authenticate()
+            self.headers['X-Auth-Token'] = self.keystone.auth_token
+        except exceptions.AuthorizationFailure:
+            logger.warning(
+                'Cant establish connection to keystone with url %s',
+                self.keystone_url)
+
+    def do(self, method, path, params=None):
+        try:
+            return super(KeystoneAuth, self).do(method, path, params)
+        except urllib2.HTTPError as e:
+            if e.code == 401:
+                logger.warning('Authorization failure: {0}'.format(e.read()))
+                self.refresh_token()
+                return super(KeystoneAuth, self).do(method, path, params)
+            else:
+                raise
 
 
 def get_inline_param_list(url):

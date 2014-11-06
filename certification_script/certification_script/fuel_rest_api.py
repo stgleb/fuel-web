@@ -5,6 +5,7 @@ import time
 import urllib2
 from functools import partial, wraps
 import base64
+import netaddr
 from certification_script.cert_script import *
 
 from keystoneclient.v2_0 import Client as keystoneclient
@@ -257,7 +258,10 @@ class Node(RestObj):
                 iface_name = net['dev']
                 for iface in self.get_info()['meta']['interfaces']:
                     if iface['name'] == iface_name:
-                        return iface['ip']
+                        try:
+                            return iface['ip']
+                        except KeyError:
+                            return netaddr.IPNetwork(net['ip']).ip
         raise Exception('Network %s not found' % network)
 
 
@@ -353,10 +357,11 @@ class Cluster(RestObj):
         configuration = self.get_networks()
         current_networks = configuration['networks']
         parameters = configuration['networking_parameters']
-        for net in current_networks:
-            net_desc = net_description['networks'].get(net['name'])
-            if net_desc:
-                net.update(net_desc)
+        if net_description.get('networks'):
+            for net in current_networks:
+                net_desc = net_description['networks'].get(net['name'])
+                if net_desc:
+                    net.update(net_desc)
         if net_description.get('networking_parameters'):
             parameters.update(net_description['networking_parameters'])
         self.configure_networks(**configuration)
@@ -423,6 +428,7 @@ def create_empty_cluster(conn, cluster_desc, debug_mode=False):
     data['release'] = cluster_desc['release']
     data['mode'] = cluster_desc.get('deployment_mode')
     data['net_provider'] = cluster_desc['settings'].get('net_provider')
+    data['net_segment_type'] = cluster_desc['settings'].get('net_segment_type')
 
     params = conn.post(path='/api/clusters', params=data)
     cluster = Cluster(conn, **params)

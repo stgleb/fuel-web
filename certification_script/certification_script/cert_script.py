@@ -168,7 +168,7 @@ def deploy_cluster(conn, cluster_desc):
 
 
 @contextlib.contextmanager
-def make_cluster(conn, cluster, auto_delete=False):
+def make_cluster(conn, cluster, auto_delete=False, debug=False):
     if auto_delete:
         for cluster_obj in fuel_rest_api.get_all_clusters(conn):
             if cluster_obj.name == cluster['name']:
@@ -179,26 +179,29 @@ def make_cluster(conn, cluster, auto_delete=False):
     c = deploy_cluster(conn, cluster)
     c.nodes = fuel_rest_api.NodeList([fuel_rest_api.Node(conn, **data) for data in c.load_nodes()])
     try:
-
         yield c
-    finally:
-        #c.delete()
-        pass
+    except Exception as _:
+        if not debug:
+            c.delete()
+    else:
+        c.delete()
 
 
-def with_cluster(conn, config_path):
-    cluster_desc = yaml.load(open(config_path).read())
+def with_cluster(template_name, **params):
 
     def decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
+            cluster_desc = args[0].templates.get(template_name)
+            cluster_desc.update(params)
+            conn = args[0].conn
             with make_cluster(conn, cluster_desc) as cluster:
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
                     kwargs['cluster_id'] = cluster.id
                 elif 'cluster' in arg_spec.args[len(arg_spec.defaults) - 1:]:
                     kwargs['cluster'] = cluster
-                return f(*args, **kwargs)
+                return f(cluster, *args, **kwargs)
         return wrapper
     return decorator
 

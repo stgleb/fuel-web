@@ -320,8 +320,6 @@ class Cluster(RestObj):
             for iface in node_networks.keys():
                 node_networks[iface]['assigned_networks'] = []
 
-
-
             for iface in interfaces:
                 for role in interfaces[iface]['networks']:
                     node_networks[iface]['assigned_networks'].append(self.network_roles[role])

@@ -198,11 +198,11 @@ def with_cluster(template_name, tear_down=True, **params):
             conn = args[0].conn
             with make_cluster(conn, cluster_desc, delete=tear_down) as cluster:
                 arg_spec = inspect.getargspec(f)
-                if 'cluster_id' in arg_spec.args[len(arg_spec.defaults) - 1:]:
+                if 'cluster_id' in arg_spec.args:
                     kwargs['cluster_id'] = cluster.id
-                elif 'cluster' in arg_spec.args[len(arg_spec.defaults) - 1:]:
+                elif 'cluster' in arg_spec.args:
                     kwargs['cluster'] = cluster
-                return f(cluster, *args, **kwargs)
+                return f(*args, **kwargs)
         return wrapper
     return decorator
 

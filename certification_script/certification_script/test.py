@@ -1,4 +1,4 @@
-from certification_script.certification_script.fuel_rest_api import Urllib2HTTP, FuelInfo
+from certification_script.fuel_rest_api import Urllib2HTTP, FuelInfo
 
 
 URL = 'http://172.18.201.16:8000'
@@ -22,4 +22,4 @@ if __name__ == '__main__':
     keys = mapping.keys()
     mapping[keys[0]], mapping[keys[1]] = mapping[keys[1]], mapping[keys[0]]
 
-    node.networks = mapping
+    node.set_networks(mapping)

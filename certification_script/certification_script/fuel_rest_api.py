@@ -1,11 +1,10 @@
-import os
 import re
 import json
 import time
 import urllib2
 from functools import partial, wraps
-import base64
 import netaddr
+
 from certification_script.cert_script import *
 
 from keystoneclient.v2_0 import Client as keystoneclient
@@ -61,6 +60,9 @@ class Urllib2HTTP(object):
 
         request.get_method = lambda: method.upper()
         response = urllib2.urlopen(request)
+
+        if self.echo:
+            logger.info("HTTP REsponce: {}".format(response.code))
 
         if response.code < 200 or response.code > 209:
             raise IndexError(url)
@@ -137,23 +139,22 @@ class RestObj(object):
 
 def make_call(method, url):
     def closure(obj, entire_obj=None, **data):
+        inline_params_vals = {}
+        for name in get_inline_param_list(url):
+            if name in data:
+                inline_params_vals[name] = data[name]
+                del data[name]
+            else:
+                inline_params_vals[name] = getattr(obj, name)
+        result_url = url.format(**inline_params_vals)
+
         if entire_obj is not None:
             if data != {}:
                 raise ValueError("Both entire_obj and data provided")
-            request_data = entire_obj
-            result_url = url
-        else:
-            inline_params_vals = {}
-            request_data = data.copy()
-            for name in get_inline_param_list(url):
-                if name in data:
-                    inline_params_vals[name] = data[name]
-                    del data[name]
-                else:
-                    inline_params_vals[name] = getattr(obj, name)
-            result_url = url.format(**inline_params_vals)
+            data = entire_obj
 
-        return obj.__connection__.do(method, result_url, params=request_data)
+        print result_url, data
+        return obj.__connection__.do(method, result_url, params=data)
     return closure
 
 
@@ -217,9 +218,9 @@ class Node(RestObj):
     network_roles = GET('/api/nodes/{id}/interfaces')
     network_roles_update = PUT('/api/nodes/{id}/interfaces')
 
-    @property
-    def networks(self):
+    def get_networks(self):
         info = self.network_roles()
+        print "info =", info
         result = {}
 
         for i in info:
@@ -227,18 +228,42 @@ class Node(RestObj):
 
         return result
 
-    @networks.setter
-    def networks(self, mapping):
-        info = self.network_roles()
+    def set_networks(self, mapping):
 
-        for i in range(len(info)):
-            info[i] = mapping[info[i]['name']]
+        curr_net_roles = self.network_roles()
+        network_ids = {}
+        for interface in curr_net_roles:
+            for net in interface['assigned_networks']:
+                network_ids[net['name']] = net['id']
 
-        url = '/api/nodes/{id}/interfaces'
-        params = {'id': self.id}
-        result_url = url.format(**params)
+        name_remapping = {'admin': 'fuelweb_admin'}
+        new_assigment = {}
+        for net in mapping:
+            uname = name_remapping.get(net['name'], net['name'])
+            net_role_desc = {'name': uname, 'id': network_ids[uname]}
+            new_assigment.setdefault(net['dev'], []).append(net_role_desc)
 
-        self.__connection__.do('put', result_url, params=info)
+        print
+        print
+        #print "!!!!!!", network_ids
+        #print "++++++", new_assigment
+        print ">>>>>>", curr_net_roles
+
+        for interface in curr_net_roles:
+            interface['assigned_networks'] = new_assigment[interface['name']]
+
+        print "======", curr_net_roles
+
+
+        #for idx, val in enumerate(info):
+        #    info[idx] = mapping[val['name']]
+
+        self.network_roles_update(curr_net_roles, id=self.id)
+
+        #url = '/api/nodes/{id}/interfaces'
+        #params = {'id': self.id}
+        #result_url = url.format(**params)
+        #self.__connection__.do('put', result_url, params=info)
 
     def set_node_name(self, name):
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
@@ -300,6 +325,7 @@ class Cluster(RestObj):
             raise
 
     def add_node(self, node, roles, interfaces=None):
+        print "interfaces =", interfaces
         data = {}
         data['pending_roles'] = roles
         data['cluster_id'] = self.id
@@ -309,22 +335,24 @@ class Cluster(RestObj):
         self.add_node_call([data])
         self.nodes.append(node)
 
-        if not interfaces is None:
-            for iface in node.networks.keys():
-                if node.networks[iface]['name'] not in self.network_roles:
-                    for role in node.networks[iface]['assigned_networks']:
+        if interfaces is not None:
+            nets = node.get_networks()
+            for iface in nets.keys():
+                if nets[iface]['name'] not in self.network_roles:
+                    for role in nets[iface]['assigned_networks']:
                         self.network_roles[role['name']] = role
 
-            node_networks = node.networks
-
-            for iface in node_networks.keys():
-                node_networks[iface]['assigned_networks'] = []
+            for iface in nets.keys():
+                nets[iface]['assigned_networks'] = []
 
             for iface in interfaces:
                 for role in interfaces[iface]['networks']:
-                    node_networks[iface]['assigned_networks'].append(self.network_roles[role])
+                    nets[iface]['assigned_networks'].append(self.network_roles[role])
 
-            node.networks = node_networks
+            import traceback
+            traceback.print_stack()
+
+            node.set_networks(nets)
 
     def wait_operational(self, timeout):
         wo = lambda: self.get_status()['status'] == 'operational'
@@ -333,6 +361,7 @@ class Cluster(RestObj):
     def deploy(self, timeout):
         logger.debug("Starting deploy...")
         self.start_deploy()
+        return
 
         self.wait_operational(timeout)
 

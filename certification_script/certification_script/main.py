@@ -1,4 +1,5 @@
 import sys
+import pprint
 import os.path
 import logging.config
 from optparse import OptionParser
@@ -6,7 +7,6 @@ from optparse import OptionParser
 import yaml
 import fuel_rest_api
 import cert_script as cs
-from cert_script import *
 
 sys.path.insert(0, '../lib/requests')
 
@@ -34,7 +34,18 @@ def parse_command_line():
 
     parser.add_option('-d', '--deploy-only',
                       help='only deploy cluster',
+                      metavar="CONFIG_FILE",
                       dest="deploy_only")
+
+    parser.add_option('-s', '--save-config',
+                      help='save network configuration',
+                      metavar='CLUSTER_NAME',
+                      dest="save_config", default=None)
+
+    parser.add_option('-r', '--reuse-config',
+                      help='reuse previously stored network configuration',
+                      dest="reuse_config", action="store_true",
+                      default=False)
 
     options, _ = parser.parse_args()
 
@@ -57,9 +68,34 @@ def setup_logger(config):
     fuel_rest_api.set_logger(logging.getLogger('clogger'))
 
 
-def main():
+def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True):
+    cluster_name_or_file = args['deploy_only']
 
+    file_exists = os.path.exists(cluster_name_or_file)
+    if cluster_name_or_file.endswith('.yaml') and file_exists:
+        try:
+            cluster = yaml.load(open(cluster_name_or_file).read())
+        except Exception:
+            print "Failed to load cluster from {}".format(cluster_name_or_file)
+            raise
+    else:
+        try:
+            cluster = clusters[cluster_name_or_file]
+        except KeyError:
+            templ = "Error: No cluster with name {} found"
+            logger.fatal(templ.format(cluster_name_or_file))
+            return 1
+
+    if auto_delete:
+        cs.delete_if_exists(conn, cluster['name'])
+
+    cs.deploy_cluster(conn, cluster)
+    return 0
+
+
+def main():
     # prepare and config
+    cfg_fname = "/tmp/cfg.yaml"
     args = parse_command_line()
     config = parse_config(args['config'])
     merge_config(config, args)
@@ -75,24 +111,26 @@ def main():
     clusters = cs.load_all_clusters(path)
 
     if args.get('deploy_only') is not None:
-        cluster_name_or_file = args['deploy_only']
+        return deploy_single_cluster(args, clusters, conn, logger)
 
-        file_exists = os.path.exists(cluster_name_or_file)
-        if cluster_name_or_file.endswith('.yaml') and file_exists:
-            try:
-                cluster = yaml.load(open(cluster_name_or_file).read())
-            except Exception:
-                print "Failed to load cluster from {}".format(cluster_name_or_file)
-                raise
-        else:
-            try:
-                cluster = clusters[cluster_name_or_file]
-            except KeyError:
-                print "Error: No cluster with name {} found".format(cluster_name_or_file)
+    save_cluster_name = args.get('save_config')
+    if save_cluster_name is not None:
+        clusters = list(fuel_rest_api.get_all_clusters(conn))
+        if save_cluster_name == "AUTO":
+            if len(clusters) > 1:
+                print "Can't select cluster - more then one available"
                 return 1
+            save_cluster_name = clusters[0].name
 
-        cs.deploy_cluster(conn, cluster)
+        for cluster in clusters:
+            if cluster.name == save_cluster_name:
+                cfg = cs.load_config_from_fuel(conn, 183)
+                cs.store_config(cfg, cfg_fname)
         return 0
+
+    if args.get('reuse_config') is True:
+        cfg = cs.load_config(cfg_fname)
+        #cluster = fuel_rest_api.reflect_cluster(conn, 183)
 
     tests_cfg = config['tests']['tests']
     for _, test_cfg in tests_cfg.iteritems():
@@ -100,28 +138,25 @@ def main():
 
         tests_to_run = test_cfg['suits']
 
-        if args['deploy_only']:
-            cs.deploy_cluster(conn, cluster)
-        else:
-            with cs.make_cluster(conn, cluster, auto_delete=True) as cluster_id:
-                results = cs.run_all_tests(conn,
-                                           cluster_id,
-                                           test_run_timeout,
-                                           tests_to_run)
+        with cs.make_cluster(conn, cluster, auto_delete=True, additional_cfg=cfg) as cluster_id:
+            results = cs.run_all_tests(conn,
+                                       cluster_id,
+                                       test_run_timeout,
+                                       tests_to_run)
 
-                tests = []
-                for testset in results:
-                    tests.extend(testset['tests'])
+            tests = []
+            for testset in results:
+                tests.extend(testset['tests'])
 
-                failed_tests = [test for test in tests
-                                if test['status'] == 'failure']
+            failed_tests = [test for test in tests
+                            if test['status'] == 'failure']
 
-                for test in failed_tests:
-                    logger.debug(test['name'])
-                    logger.debug(" "*10 + 'Failure message: '
-                                 + test['message'])
+            for test in failed_tests:
+                logger.debug(test['name'])
+                logger.debug(" "*10 + 'Failure message: '
+                             + test['message'])
 
-                cs.send_results(config['report']['mail'], tests)
+            cs.send_results(config['report']['mail'], tests)
 
     return 0
 

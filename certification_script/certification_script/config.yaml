@@ -12,6 +12,7 @@ discovery_timeout: 600
 name: "sert-cluster"
 
 log_settings: logging.yaml
+config_file: /tmp/netconfig.yaml
 
 report:
   mail:

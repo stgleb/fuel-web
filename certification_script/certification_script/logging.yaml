@@ -17,9 +17,9 @@ handlers:
         filename: songinfo.log
 
 loggers:
-    clogger:
-        level: DEBUG
-        handlers: [console]
+    #clogger:
+    #    level: DEBUG
+    #    handlers: [console]
     flogger:
         level: WARNING
         handlers: [file]

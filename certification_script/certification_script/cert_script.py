@@ -149,9 +149,12 @@ def load_all_clusters(path):
     return res
 
 
-def deploy_cluster(conn, cluster_desc):
+def deploy_cluster(conn, cluster_desc, additional_cfg=None):
     cluster = fuel_rest_api.create_empty_cluster(conn, cluster_desc)
-    cluster.set_networks(cluster_desc['network_configuration'])
+
+    if 'network_configuration' in cluster_desc:
+        cluster.set_networks(cluster_desc['network_configuration'])
+
     nodes_discover_timeout = cluster_desc.get('nodes_discovery_timeout', 3600)
     deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
@@ -163,8 +166,19 @@ def deploy_cluster(conn, cluster_desc):
         else:
             cluster.add_node(node, node_desc['roles'])
 
+    if additional_cfg is not None:
+        cs.update_cluster(cluster, additional_cfg)
+
     cluster.deploy(deploy_timeout)
     return cluster
+
+
+def delete_if_exists(conn, name):
+    for cluster_obj in fuel_rest_api.get_all_clusters(conn):
+        if cluster_obj.name == name:
+            cluster_obj.delete()
+            wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
+            wd(lambda co: not co.check_exists())(cluster_obj)
 
 
 @contextlib.contextmanager
@@ -176,8 +190,9 @@ def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True):
                 wd = fuel_rest_api.with_timeout("Wait cluster deleted", 60)
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
-    c = deploy_cluster(conn, cluster)
-    c.nodes = fuel_rest_api.NodeList([fuel_rest_api.Node(conn, **data) for data in c.load_nodes()])
+    c = deploy_cluster(conn, cluster, additional_cfg)
+    nodes = [fuel_rest_api.Node(conn, **data) for data in c.load_nodes()]
+    c.nodes = fuel_rest_api.NodeList(nodes)
     try:
         yield c
     except Exception as _:
@@ -207,25 +222,26 @@ def with_cluster(template_name, tear_down=True, **params):
     return decorator
 
 
-def traverse(root):
-    for k in root.keys():
-        if isinstance(root[k], dict):
-            traverse(root[k])
-        else:
-            if isinstance(root[k], basestring):
-                root[k] = root[k].encode('utf8')
+def to_utf8(val):
+    if isinstance(val, basestring):
+        return val.encode('utf8')
+    return val
 
-            if isinstance(root[k], list):
-                for e in range(len(root[k])):
-                    if isinstance(root[k][e], basestring):
-                        root[k] = root[k][e].encode('utf8')
-                    else:
-                        traverse(e)
 
-def dump_config(base_url, id, file_name):
-        urllib = fuel_rest_api.Urllib2HTTP(base_url)
+def encode_recursivelly(root):
+    if isinstance(root, list):
+        return map(encode_recursivelly, root)
+    elif isinstance(root, dict):
+        return {to_utf8(key):encode_recursivelly(val) 
+                    for key, val in root.items()}
+    else:
+        return to_utf8(root)
+
+
+def load_config_from_fuel(conn, id):
+        cluster = fuel_rest_api.reflect_cluster(conn, id)
         status = {}
-        c = urllib.do('get', 'api/clusters/' + str(id))
+        c = cluster.get_status()
 
         status['name'] = c['name']
         status['deployment_mode'] = c['mode']
@@ -234,23 +250,49 @@ def dump_config(base_url, id, file_name):
         status['settings']['net_provider'] = c['net_provider']
 
         status['nodes'] = {}
-        cnt = 1
-        nodes = urllib.do('get', 'api/nodes')
 
-        for node in nodes:
+        for cnt, node in enumerate(cluster.load_nodes(), 1):
             if node['cluster'] == id:
-                cur_node = 'node' + str(cnt)
-                status['nodes'][cur_node] = {}
-                status['nodes'][cur_node]['requirements'] = {}
-                status['nodes'][cur_node]['roles'] = node['roles']
+                cur_node = 'node{}'.format(cnt)
+                cnode = status['nodes'][cur_node] = {}
 
-                if 'controller' in status['nodes'][cur_node]['roles']:
-                    status['nodes'][cur_node]['dns_name'] = 'controller' + str(cnt)
-                cnt += 1
+                cnode['requirements'] = {}
+                cnode['roles'] = node['roles']
+                cnode['network_data'] = node['network_data']
+                cnode['main_mac'] = node['mac']
+
+                if 'controller' in cnode['roles']:
+                    cnode['dns_name'] = 'controller' + str(cnt)
 
         status['timeout'] = 3600
 
-        traverse(status)
-        print yaml.dump(status)
-        with open(file_name + '.yaml', 'w') as file:
-            file.write(yaml.dump(status))
+        status = encode_recursivelly(status)
+        return status
+
+
+def store_config(config, file_name):
+    if not file_name.endswith('.yaml'):
+        file_name += '.yaml'
+
+    with open(file_name, 'w') as fd:
+        fd.write(yaml.dump(config))
+
+
+def load_config(file_name):
+    with open(file_name) as fd:
+        return yaml.load(fd.read())
+
+
+def update_cluster(cluster, cfg):
+    cfg_for_mac = {val['main_mac']: val for name, val in cfg['nodes'].items()}
+    for node in cluster.nodes:
+        if node['mac'] in cfg_for_mac:
+            cfg = cfg_for_mac[node['mac']]
+            curr_nd = node['network_data']
+            new_nd = {itm['name']: itm for itm in cfg['network_data']}
+
+            for interface in curr_nd:
+                if interface['name'] in new_nd:
+                    interface.update(new_nd[interface['name']])
+
+            node.set_networks(curr_nd)

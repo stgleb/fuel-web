@@ -377,9 +377,6 @@ class Cluster(RestObj):
         wto = with_timeout(timeout, "wait deployment finished")
         wto(all_tasks_finished_ok)(self)
 
-    def dump_changes(self):
-        dump_config(self.__connection__.root_url, self.id, self.name)
-
     def set_networks(self, net_description):
         configuration = self.get_networks()
         current_networks = configuration['networks']

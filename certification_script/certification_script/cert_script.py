@@ -167,7 +167,7 @@ def deploy_cluster(conn, cluster_desc, additional_cfg=None):
             cluster.add_node(node, node_desc['roles'])
 
     if additional_cfg is not None:
-        cs.update_cluster(cluster, additional_cfg)
+        update_cluster(cluster, additional_cfg)
 
     cluster.deploy(deploy_timeout)
     return cluster
@@ -182,7 +182,7 @@ def delete_if_exists(conn, name):
 
 
 @contextlib.contextmanager
-def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True):
+def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True, additional_cfg=None):
     if auto_delete:
         for cluster_obj in fuel_rest_api.get_all_clusters(conn):
             if cluster_obj.name == cluster['name']:

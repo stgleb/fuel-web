@@ -361,7 +361,6 @@ class Cluster(RestObj):
     def deploy(self, timeout):
         logger.debug("Starting deploy...")
         self.start_deploy()
-        return
 
         self.wait_operational(timeout)
 

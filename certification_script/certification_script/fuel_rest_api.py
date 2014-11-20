@@ -90,6 +90,7 @@ class KeystoneAuth(Urllib2HTTP):
         self.refresh_token()
 
     def refresh_token(self):
+        """Get new token from keystone and update headers"""
         try:
             self.keystone.authenticate()
             self.headers['X-Auth-Token'] = self.keystone.auth_token
@@ -99,6 +100,7 @@ class KeystoneAuth(Urllib2HTTP):
                 self.keystone_url)
 
     def do(self, method, path, params=None):
+        """Do request. If gets 401 refresh token"""
         try:
             return super(KeystoneAuth, self).do(method, path, params)
         except urllib2.HTTPError as e:
@@ -192,33 +194,42 @@ def get_fuel_info(url):
 
 class FuelInfo(RestObj):
 
+    """Class represents Fuel installation info"""
+
     get_nodes = GET('api/nodes')
     get_clusters = GET('api/clusters')
     get_cluster = GET('api/clusters/{id}')
 
     @property
     def nodes(self):
+        """Get all fuel nodes"""
         return NodeList([Node(self.__connection__, **node) for node
                          in self.get_nodes()])
 
     @property
     def free_nodes(self):
+        """Get unallocated nodes"""
         return NodeList([Node(self.__connection__, **node) for node in
                          self.get_nodes() if not node['cluster']])
 
     @property
     def clusters(self):
+        """List clusters in fuel"""
         return [Cluster(self.__connection__, **cluster) for cluster
                 in self.get_clusters()]
 
 
 class Node(RestObj):
-
+    """Represents node in Fuel"""
     get_info = GET('/api/nodes/{id}')
     network_roles = GET('/api/nodes/{id}/interfaces')
     network_roles_update = PUT('/api/nodes/{id}/interfaces')
 
     def get_networks(self):
+        """Node interfaces info
+
+        Returns mapping iface name to iface info
+        """
         info = self.network_roles()
         print "info =", info
         result = {}
@@ -229,7 +240,9 @@ class Node(RestObj):
         return result
 
     def set_networks(self, mapping):
-
+        """Assings networks to interfaces
+        :param mapping: list (dict) interfaces info
+        """
         curr_net_roles = self.network_roles()
         network_ids = {}
         for interface in curr_net_roles:
@@ -266,17 +279,27 @@ class Node(RestObj):
         #self.__connection__.do('put', result_url, params=info)
 
     def set_node_name(self, name):
+        """Update node name"""
         self.__connection__.put('nodes', [{'id': self.id, 'name': name}])
 
     def get_network_data(self):
+        """Returns node network data"""
         node_info = self.get_info()
         return node_info.get('network_data')
 
     def get_roles(self):
+        """Get node roles
+
+        Returns: (roles, pending_roles)
+        """
         node_info = self.get_info()
         return node_info.get('roles'), node_info.get('pending_roles')
 
     def get_ip(self, network='public'):
+        """Get node ip
+
+        :param network: network to pick
+        """
         nets = self.get_network_data()
         for net in nets:
             if net['name'] == network:
@@ -291,6 +314,7 @@ class Node(RestObj):
 
 
 class NodeList(list):
+    """Class for filtering nodes through attributes"""
     allowed_roles = ['controller', 'compute', 'cinder', 'ceph-osd', 'mongo',
                      'zabbix-server']
 
@@ -300,6 +324,7 @@ class NodeList(list):
 
 
 class Cluster(RestObj):
+    """Class represents Cluster in Fuel"""
 
     add_node_call = PUT('api/nodes')
     start_deploy = PUT('api/clusters/{id}/changes')
@@ -316,6 +341,7 @@ class Cluster(RestObj):
         self.network_roles = {}
 
     def check_exists(self):
+        """Check if cluster exists"""
         try:
             self.get_status()
             return True
@@ -325,6 +351,12 @@ class Cluster(RestObj):
             raise
 
     def add_node(self, node, roles, interfaces=None):
+        """Add node to cluster
+
+        :param node: Node object
+        :param roles: roles to assign
+        :param interfaces: mapping iface name to networks
+        """
         print "interfaces =", interfaces
         data = {}
         data['pending_roles'] = roles
@@ -355,13 +387,14 @@ class Cluster(RestObj):
             node.set_networks(nets)
 
     def wait_operational(self, timeout):
+        """Wait until cluster status operational"""
         wo = lambda: self.get_status()['status'] == 'operational'
         with_timeout(timeout, "deploy cluster")(wo)()
 
     def deploy(self, timeout):
+        """Start deploy and wait until all tasks finished"""
         logger.debug("Starting deploy...")
         self.start_deploy()
-        return
 
         self.wait_operational(timeout)
 
@@ -378,6 +411,7 @@ class Cluster(RestObj):
         wto(all_tasks_finished_ok)(self)
 
     def set_networks(self, net_description):
+        """Update cluster networking parameters"""
         configuration = self.get_networks()
         current_networks = configuration['networks']
         parameters = configuration['networking_parameters']
@@ -392,17 +426,20 @@ class Cluster(RestObj):
 
 
 def reflect_cluster(conn, cluster_id):
+    """Returns cluster object by id"""
     c = Cluster(conn, id=cluster_id)
     c.nodes = NodeList([Node(conn, **data) for data in c.load_nodes()])
     return c
 
 
 def get_all_nodes(conn):
+    """Get all nodes from Fuel"""
     for node_desc in conn.get('api/nodes'):
         yield Node(conn, **node_desc)
 
 
 def get_all_clusters(conn):
+    """Get all clusters"""
     for cluster_desc in conn.get('api/clusters'):
         yield Cluster(conn, **cluster_desc)
 
@@ -411,6 +448,7 @@ get_cluster_attributes = GET('api/clusters/{id}/attributes')
 
 
 def get_cluster_id(name, conn):
+    """Get cluster id by name"""
     for cluster in get_all_clusters(conn):
         if cluster.name == name:
             logger.info('cluster name is %s' % name)
@@ -444,6 +482,7 @@ sections = {
 
 
 def create_empty_cluster(conn, cluster_desc, debug_mode=False):
+    """Create new cluster with configuration provided"""
     logger.info("Creating new cluster %s" % cluster_desc['name'])
     data = {}
     data['nodes'] = []

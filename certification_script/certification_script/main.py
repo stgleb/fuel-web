@@ -124,7 +124,7 @@ def main():
 
         for cluster in clusters:
             if cluster.name == save_cluster_name:
-                cfg = cs.load_config_from_fuel(conn, 183)
+                cfg = cs.load_config_from_fuel(conn, cluster.id)
                 cs.store_config(cfg, cfg_fname)
         return 0
 

@@ -47,6 +47,12 @@ def parse_command_line():
                       dest="reuse_config", action="store_true",
                       default=False)
 
+    parser.add_option('-a', '--auth',
+                      help='keystone credentials in format '
+                           'username=admin,tenant_name=admin,password=admin',
+                      dest="creds", default=None)
+
+
     options, _ = parser.parse_args()
 
     return options.__dict__
@@ -101,7 +107,21 @@ def main():
     merge_config(config, args)
     setup_logger(config)
     logger = logging.getLogger('clogger')
-    conn = fuel_rest_api.Urllib2HTTP(config['fuelurl'], echo=True)
+    creds = args.get('creds')
+    if creds:
+        admin_node_ip = config['fuelurl'].split('/')[-1].split(':')[0]
+        keyst_creds = dict([pair.split("=") for pair in creds.split(",")
+                            if pair and "=" in pair])
+        required_keys = ['username', 'password', 'tenant_name']
+        if keyst_creds and all([key in keyst_creds for key in required_keys]):
+            conn = fuel_rest_api.KeystoneAuth(config['fuelurl'],
+                                              creds=keyst_creds,
+                                              echo=True,
+                                              admin_node_ip=admin_node_ip)
+        else:
+            raise Exception("Invalid auth credentials")
+    else:
+        conn = fuel_rest_api.Urllib2HTTP(config['fuelurl'], echo=True)
 
     test_run_timeout = config.get('testrun_timeout', 3600)
 

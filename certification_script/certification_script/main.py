@@ -74,7 +74,8 @@ def setup_logger(config):
     fuel_rest_api.set_logger(logging.getLogger('clogger'))
 
 
-def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True):
+def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True,
+                          additional_cfg=None):
     cluster_name_or_file = args['deploy_only']
 
     file_exists = os.path.exists(cluster_name_or_file)
@@ -95,16 +96,16 @@ def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True):
     if auto_delete:
         cs.delete_if_exists(conn, cluster['name'])
 
-    cs.deploy_cluster(conn, cluster)
+    cs.deploy_cluster(conn, cluster, additional_cfg=additional_cfg)
     return 0
 
 
 def main():
     # prepare and config
-    cfg_fname = "/tmp/cfg.yaml"
     args = parse_command_line()
     config = parse_config(args['config'])
     merge_config(config, args)
+    cfg_fname = config["gui_config_file"]
     setup_logger(config)
     logger = logging.getLogger('clogger')
     creds = args.get('creds')
@@ -130,8 +131,13 @@ def main():
 
     clusters = cs.load_all_clusters(path)
 
+    saved_cfg = None
+    if args.get('reuse_config') is True:
+        saved_cfg = cs.load_config(cfg_fname)
+
     if args.get('deploy_only') is not None:
-        return deploy_single_cluster(args, clusters, conn, logger)
+        return deploy_single_cluster(args, clusters, conn, logger,
+                                     additional_cfg=saved_cfg)
 
     save_cluster_name = args.get('save_config')
     if save_cluster_name is not None:
@@ -148,17 +154,18 @@ def main():
                 cs.store_config(cfg, cfg_fname)
         return 0
 
-    if args.get('reuse_config') is True:
-        cfg = cs.load_config(cfg_fname)
-        #cluster = fuel_rest_api.reflect_cluster(conn, 183)
-
     tests_cfg = config['tests']['tests']
     for _, test_cfg in tests_cfg.iteritems():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']
 
-        with cs.make_cluster(conn, cluster, auto_delete=True, additional_cfg=cfg) as cluster_id:
+        cont_man = cs.make_cluster(conn,
+                                   cluster,
+                                   auto_delete=True,
+                                   additional_cfg=saved_cfg)
+
+        with cont_man as cluster_id:
             results = cs.run_all_tests(conn,
                                        cluster_id,
                                        test_run_timeout,

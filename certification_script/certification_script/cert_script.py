@@ -1,5 +1,6 @@
 import time
 import glob
+import pprint
 import os.path
 import pkgutil
 import smtplib
@@ -167,7 +168,12 @@ def deploy_cluster(conn, cluster_desc, additional_cfg=None):
             cluster.add_node(node, node_desc['roles'])
 
     if additional_cfg is not None:
+        # TODO: update network from this call 
+        # can be merged with cluster.set_networks above
         update_cluster(cluster, additional_cfg)
+
+    print "Don't really start deploy"
+    return cluster
 
     cluster.deploy(deploy_timeout)
     return cluster
@@ -191,7 +197,7 @@ def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True, add
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
     c = deploy_cluster(conn, cluster, additional_cfg)
-    nodes = [fuel_rest_api.Node(conn, **data) for data in c.load_nodes()]
+    nodes = [fuel_rest_api.Node(conn, **data) for data in c.get_nodes()]
     c.nodes = fuel_rest_api.NodeList(nodes)
     try:
         yield c
@@ -232,42 +238,47 @@ def encode_recursivelly(root):
     if isinstance(root, list):
         return map(encode_recursivelly, root)
     elif isinstance(root, dict):
-        return {to_utf8(key):encode_recursivelly(val) 
-                    for key, val in root.items()}
+        return {to_utf8(key): encode_recursivelly(val)
+                for key, val in root.items()}
     else:
         return to_utf8(root)
 
 
-def load_config_from_fuel(conn, id):
-        cluster = fuel_rest_api.reflect_cluster(conn, id)
-        status = {}
-        c = cluster.get_status()
+def load_config_from_fuel(conn, cluster_id):
+    cluster = fuel_rest_api.reflect_cluster(conn, cluster_id)
+    status = {}
+    c = cluster.get_status()
 
-        status['name'] = c['name']
-        status['deployment_mode'] = c['mode']
-        status['release'] = c['release_id']
-        status['settings'] = {}
-        status['settings']['net_provider'] = c['net_provider']
+    status['name'] = c['name']
+    status['deployment_mode'] = c['mode']
+    status['release'] = c['release_id']
+    status['settings'] = {}
+    status['settings']['net_provider'] = c['net_provider']
 
-        status['nodes'] = {}
+    status['nodes'] = {}
 
-        for cnt, node in enumerate(cluster.load_nodes(), 1):
-            if node['cluster'] == id:
-                cur_node = 'node{}'.format(cnt)
-                cnode = status['nodes'][cur_node] = {}
+    for cnt, node in enumerate(cluster.get_nodes(), 1):
+        if node['cluster'] == cluster_id:
+            cur_node = 'node{}'.format(cnt)
+            cnode = status['nodes'][cur_node] = {}
 
-                cnode['requirements'] = {}
-                cnode['roles'] = node['roles']
-                cnode['network_data'] = node['network_data']
-                cnode['main_mac'] = node['mac']
+            #cnode['requirements'] = {}
+            #cnode['roles'] = node['roles']
+            cnode['network_data'] = node['network_data']
+            cnode['main_mac'] = node['mac']
 
-                if 'controller' in cnode['roles']:
-                    cnode['dns_name'] = 'controller' + str(cnt)
+            #if 'controller' in cnode['roles']:
+            #    cnode['dns_name'] = 'controller' + str(cnt)
 
-        status['timeout'] = 3600
+    status['timeout'] = 3600
 
-        status = encode_recursivelly(status)
-        return status
+    net_data = cluster.get_networks(
+        net_provider=status['settings']['net_provider'])
+
+    status['network_provider_configuration'] = net_data
+
+    status = encode_recursivelly(status)
+    return status
 
 
 def store_config(config, file_name):
@@ -284,15 +295,22 @@ def load_config(file_name):
 
 
 def update_cluster(cluster, cfg):
+
     cfg_for_mac = {val['main_mac']: val for name, val in cfg['nodes'].items()}
-    for node in cluster.nodes:
-        if node['mac'] in cfg_for_mac:
-            cfg = cfg_for_mac[node['mac']]
-            curr_nd = node['network_data']
-            new_nd = {itm['name']: itm for itm in cfg['network_data']}
 
-            for interface in curr_nd:
-                if interface['name'] in new_nd:
-                    interface.update(new_nd[interface['name']])
+    for node in cluster.get_nodes():
+        if node.mac in cfg_for_mac:
+            node_cfg = cfg_for_mac[node.mac]
 
-            node.set_networks(curr_nd)
+            mapping = {}
+            for net_descr in node_cfg['network_data']:
+                net_name = net_descr['name']
+                if net_name == 'admin':
+                    net_name = 'fuelweb_admin'
+                dev_name = net_descr['dev']
+                mapping.setdefault(dev_name, []).append(net_name)
+
+            node.set_network_assigment(mapping)
+
+    net_data = cfg['network_provider_configuration']
+    cluster.set_networks(net_data)

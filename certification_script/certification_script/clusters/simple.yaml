@@ -17,6 +17,8 @@ nodes:
             - management
             - fixed
             - storage
+        eth1:
+          networks:
             - fuelweb_admin
     node2:
       roles:

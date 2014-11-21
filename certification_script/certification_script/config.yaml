@@ -10,6 +10,7 @@ tests:
 deploy_timeout: 3600
 discovery_timeout: 600
 name: "sert-cluster"
+gui_config_file: /tmp/cfg.yaml
 
 log_settings: logging.yaml
 config_file: /tmp/netconfig.yaml

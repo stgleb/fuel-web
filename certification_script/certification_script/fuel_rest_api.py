@@ -2,10 +2,14 @@ import re
 import json
 import time
 import urllib2
+import pprint
 from functools import partial, wraps
 import netaddr
 
+
+import type_check
 from certification_script.cert_script import *
+
 
 from keystoneclient.v2_0 import Client as keystoneclient
 from keystoneclient import exceptions
@@ -156,6 +160,7 @@ def make_call(method, url):
             data = entire_obj
 
         print result_url, data
+
         return obj.__connection__.do(method, result_url, params=data)
     return closure
 
@@ -219,64 +224,56 @@ class FuelInfo(RestObj):
                 in self.get_clusters()]
 
 
+def remap_saved_networks(mapping):
+    # only for saved networks
+    name_remapping = {'admin': 'fuelweb_admin'}
+    new_assigment = {}
+    for net in mapping['assigned_networks']:
+        uname = name_remapping.get(net['name'], net['name'])
+        net_role_desc = {'name': uname, 'id': network_ids[uname]}
+        new_assigment.setdefault(net['dev'], []).append(net_role_desc)
+
+    for interface in curr_net_roles:
+        interface['assigned_networks'] = new_assigment[interface['name']]
+
+
 class Node(RestObj):
     """Represents node in Fuel"""
+
     get_info = GET('/api/nodes/{id}')
-    network_roles = GET('/api/nodes/{id}/interfaces')
-    network_roles_update = PUT('/api/nodes/{id}/interfaces')
+    get_interfaces = GET('/api/nodes/{id}/interfaces')
+    update_interfaces = PUT('/api/nodes/{id}/interfaces')
 
-    def get_networks(self):
-        """Node interfaces info
-
-        Returns mapping iface name to iface info
-        """
-        info = self.network_roles()
-        print "info =", info
-        result = {}
-
-        for i in info:
-            result[i['name']] = i
-
-        return result
-
-    def set_networks(self, mapping):
+    def set_network_assigment(self, mapping):
         """Assings networks to interfaces
         :param mapping: list (dict) interfaces info
         """
-        curr_net_roles = self.network_roles()
+
+        type_check.check({str: [str]}, mapping)
+
+        curr_interfaces = self.get_interfaces()
+
         network_ids = {}
-        for interface in curr_net_roles:
+        for interface in curr_interfaces:
             for net in interface['assigned_networks']:
                 network_ids[net['name']] = net['id']
 
-        name_remapping = {'admin': 'fuelweb_admin'}
-        new_assigment = {}
-        for net in mapping:
-            uname = name_remapping.get(net['name'], net['name'])
-            net_role_desc = {'name': uname, 'id': network_ids[uname]}
-            new_assigment.setdefault(net['dev'], []).append(net_role_desc)
+        #transform mappings
+        new_assigned_networks = {}
 
-        print
-        print
-        #print "!!!!!!", network_ids
-        #print "++++++", new_assigment
-        print ">>>>>>", curr_net_roles
+        for dev_name, networks in mapping.items():
+            new_assigned_networks[dev_name] = []
+            for net_name in networks:
+                nnet = {'name': net_name, 'id': network_ids[net_name]}
+                new_assigned_networks[dev_name].append(nnet)
 
-        for interface in curr_net_roles:
-            interface['assigned_networks'] = new_assigment[interface['name']]
+        # update by ref
+        for dev_descr in curr_interfaces:
+            if dev_descr['name'] in new_assigned_networks:
+                nass = new_assigned_networks[dev_descr['name']]
+                dev_descr['assigned_networks'] = nass
 
-        print "======", curr_net_roles
-
-
-        #for idx, val in enumerate(info):
-        #    info[idx] = mapping[val['name']]
-
-        self.network_roles_update(curr_net_roles, id=self.id)
-
-        #url = '/api/nodes/{id}/interfaces'
-        #params = {'id': self.id}
-        #result_url = url.format(**params)
-        #self.__connection__.do('put', result_url, params=info)
+        self.update_interfaces(curr_interfaces, id=self.id)
 
     def set_node_name(self, name):
         """Update node name"""
@@ -331,9 +328,10 @@ class Cluster(RestObj):
     get_status = GET('api/clusters/{id}')
     delete = DELETE('api/clusters/{id}')
     get_tasks_status = GET("api/tasks?tasks={id}")
-    load_nodes = GET('api/nodes?cluster_id={id}')
     get_networks = GET('api/clusters/{id}/network_configuration/{net_provider}')
     configure_networks = PUT('api/clusters/{id}/network_configuration/{net_provider}')
+
+    _get_nodes = GET('api/nodes?cluster_id={id}')
 
     def __init__(self, *dt, **mp):
         super(Cluster, self).__init__(*dt, **mp)
@@ -350,6 +348,10 @@ class Cluster(RestObj):
                 return False
             raise
 
+    def get_nodes(self):
+        for node_descr in self._get_nodes():
+            yield Node(self.__connection__, **node_descr)
+
     def add_node(self, node, roles, interfaces=None):
         """Add node to cluster
 
@@ -357,7 +359,6 @@ class Cluster(RestObj):
         :param roles: roles to assign
         :param interfaces: mapping iface name to networks
         """
-        print "interfaces =", interfaces
         data = {}
         data['pending_roles'] = roles
         data['cluster_id'] = self.id
@@ -368,23 +369,11 @@ class Cluster(RestObj):
         self.nodes.append(node)
 
         if interfaces is not None:
-            nets = node.get_networks()
-            for iface in nets.keys():
-                if nets[iface]['name'] not in self.network_roles:
-                    for role in nets[iface]['assigned_networks']:
-                        self.network_roles[role['name']] = role
+            networks = {}
+            for iface_name, params in interfaces.items():
+                networks[iface_name] = params['networks']
 
-            for iface in nets.keys():
-                nets[iface]['assigned_networks'] = []
-
-            for iface in interfaces:
-                for role in interfaces[iface]['networks']:
-                    nets[iface]['assigned_networks'].append(self.network_roles[role])
-
-            import traceback
-            traceback.print_stack()
-
-            node.set_networks(nets)
+            node.set_network_assigment(networks)
 
     def wait_operational(self, timeout):
         """Wait until cluster status operational"""
@@ -410,25 +399,36 @@ class Cluster(RestObj):
         wto = with_timeout(timeout, "wait deployment finished")
         wto(all_tasks_finished_ok)(self)
 
-    def set_networks(self, net_description):
+    def set_networks(self, net_descriptions):
         """Update cluster networking parameters"""
         configuration = self.get_networks()
         current_networks = configuration['networks']
         parameters = configuration['networking_parameters']
-        if net_description.get('networks'):
+
+        if net_descriptions.get('networks'):
+            net_mapping = {}
+            for net_description in net_descriptions['networks']:
+                net_mapping[net_description["name"]] = net_description
+
+            print "!!!!!!!!!!!!!!!!!!"
+            pprint.pprint(net_mapping)
+            print "-" * 80
+
             for net in current_networks:
-                net_desc = net_description['networks'].get(net['name'])
+                net_desc = net_mapping.get(net['name'])
                 if net_desc:
                     net.update(net_desc)
-        if net_description.get('networking_parameters'):
-            parameters.update(net_description['networking_parameters'])
+
+        if net_descriptions.get('networking_parameters'):
+            parameters.update(net_descriptions['networking_parameters'])
+
         self.configure_networks(**configuration)
 
 
 def reflect_cluster(conn, cluster_id):
     """Returns cluster object by id"""
     c = Cluster(conn, id=cluster_id)
-    c.nodes = NodeList([Node(conn, **data) for data in c.load_nodes()])
+    c.nodes = NodeList(list(c.get_nodes()))
     return c
 
 

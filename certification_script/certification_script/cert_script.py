@@ -31,6 +31,8 @@ def find_node_by_requirements(nodes, requirements):
     max_cpu = requirements.get('cpu_count_max') or 1000
     min_hd = requirements.get('hd_size_min') or 0
     max_hd = requirements.get('hd_size_max') or 10000
+    min_mem = requirements.get('mem_count_min') or 0
+    max_mem = requirements.get('mem_count_max') or 10000
 
     def hd_valid(hd):
         return max_hd >= hd >= min_hd
@@ -38,11 +40,15 @@ def find_node_by_requirements(nodes, requirements):
     def cpu_valid(cpu):
         return max_cpu >= cpu >= min_cpu
 
+    def mem_valid(mem):
+        return max_mem >= mem >= min_mem
+
     for node in nodes:
         cpu = node.meta['cpu']['total']
+        mem = node.meta['memory']['total']
         hd = sum(disk['size'] for disk in node.meta['disks']) / GB
 
-        if cpu_valid(cpu) and hd_valid(hd):
+        if cpu_valid(cpu) and hd_valid(hd) and mem_valid(mem):
             return node
     return None
 

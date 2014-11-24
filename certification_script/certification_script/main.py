@@ -57,6 +57,11 @@ def parse_command_line():
                            'environment1,environment2. Use ALL to delete all',
                       dest='delete', default=None)
 
+    parser.add_option('-e', '--email',
+                      help='email to send results. If not provided the results'
+                           'will not be sent',
+                      dest='email', default=None)
+
     options, _ = parser.parse_args()
 
     return options.__dict__
@@ -196,7 +201,9 @@ def main():
                 logger.debug(" "*10 + 'Failure message: '
                              + test['message'])
 
-            cs.send_results(config['report']['mail'], tests)
+            email_for_results = args.get("email")
+            if email_for_results:
+                cs.send_results(email_for_results, tests)
 
     return 0
 

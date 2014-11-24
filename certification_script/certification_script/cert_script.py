@@ -187,13 +187,20 @@ def delete_if_exists(conn, name):
             wd(lambda co: not co.check_exists())(cluster_obj)
 
 
+def delete_all_clusters(conn):
+    for cluster_obj in fuel_rest_api.get_all_clusters(conn):
+        cluster_obj.delete()
+        wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
+        wd(lambda co: not co.check_exists())(cluster_obj)
+
+
 @contextlib.contextmanager
 def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True, additional_cfg=None):
     if auto_delete:
         for cluster_obj in fuel_rest_api.get_all_clusters(conn):
             if cluster_obj.name == cluster['name']:
                 cluster_obj.delete()
-                wd = fuel_rest_api.with_timeout("Wait cluster deleted", 60)
+                wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
     c = deploy_cluster(conn, cluster, additional_cfg)

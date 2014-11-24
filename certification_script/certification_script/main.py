@@ -52,6 +52,10 @@ def parse_command_line():
                            'username=admin,tenant_name=admin,password=admin',
                       dest="creds", default=None)
 
+    parser.add_option('-D', '--delete',
+                      help='delete list of environments separated by coma e.g'
+                           'environment1,environment2. Use ALL to delete all',
+                      dest='delete', default=None)
 
     options, _ = parser.parse_args()
 
@@ -130,6 +134,15 @@ def main():
                         config['tests']['clusters_directory'])
 
     clusters = cs.load_all_clusters(path)
+
+    clusters_to_delete = args.get('delete')
+    if clusters_to_delete:
+        if clusters_to_delete == "ALL":
+            cs.delete_all_clusters(conn)
+        else:
+            for cl_name in clusters_to_delete.split(','):
+                cs.delete_if_exists(conn, cl_name)
+        return
 
     saved_cfg = None
     if args.get('reuse_config') is True:

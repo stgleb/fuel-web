@@ -510,6 +510,6 @@ def create_empty_cluster(conn, cluster_desc, debug_mode=False):
             attr_val_dict['value'] = value
 
     ed_attrs['common']['debug']['value'] = debug_mode
-    update_cluster_attributes(cluster, attrs=attributes)
+    update_cluster_attributes(cluster, attributes)
 
     return cluster

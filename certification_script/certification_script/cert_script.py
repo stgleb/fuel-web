@@ -178,9 +178,6 @@ def deploy_cluster(conn, cluster_desc, additional_cfg=None):
         # can be merged with cluster.set_networks above
         update_cluster(cluster, additional_cfg)
 
-    print "Don't really start deploy"
-    return cluster
-
     cluster.deploy(deploy_timeout)
     return cluster
 

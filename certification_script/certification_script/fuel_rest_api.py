@@ -377,7 +377,11 @@ class Cluster(RestObj):
 
     def wait_operational(self, timeout):
         """Wait until cluster status operational"""
-        wo = lambda: self.get_status()['status'] == 'operational'
+        def wo():
+            status = self.get_status()['status']
+            if status == "error":
+                raise Exception("Cluster deploy failed")
+            return self.get_status()['status'] == 'operational'
         with_timeout(timeout, "deploy cluster")(wo)()
 
     def deploy(self, timeout):

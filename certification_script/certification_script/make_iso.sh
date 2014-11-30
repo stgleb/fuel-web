@@ -19,6 +19,16 @@ NAILGUN_CONTENT_TMP_FOLDER="$TMP_FOLDER/nailgun_fs"
 IMAGE_SCRIPT_FOLDER="$NAILGUN_CONTENT_TMP_FOLDER/usr/lib/python2.6/site-packages"
 WHOLE_ISO_TMP="$TMP_FOLDER/image"
 
+function repack_containers_archive() {
+    pushd $TMP_FOLDER
+    rm -f "$WHOLE_TAR_FILE"
+    sudo tar -cf "$WHOLE_TAR_FILE" *
+    popd
+
+    rm -f "$NEW_DOCKER_IMAGE"
+    lrzip "$WHOLE_TAR_FILE" -o "$NEW_DOCKER_IMAGE"    
+}
+
 function using_docker_file() {
     DOCKER_IMAGE_TAR=$1
     SCRIPT_FOLDER=$2
@@ -41,8 +51,10 @@ function using_docker_file() {
     echo "COPY $CERT_PATH /usr/lib/python2.6/site-packages" >> $SOURCE_ROOT/Dockerfile
     echo "COPY $TEST_PATH /usr/lib/python2.6/site-packages" >> $SOURCE_ROOT/Dockerfile
 
-    docker build --force-rm=true -t fuel/nailgun_cert $SOURCE_ROOT
+    docker build --force-rm=true -t $NAILGUN_IMAGE_NAME $SOURCE_ROOT
     rm $SOURCE_ROOT/Dockerfile
+    rm $DOCKER_IMAGE_TAR
+    docker save $NAILGUN_IMAGE_NAME > $DOCKER_IMAGE_TAR
 }
 
 function using_cp() {
@@ -61,14 +73,7 @@ function using_cp() {
     cd "$NAILGUN_CONTAINER_TMP_FOLDER"
     rm -f "$NAILGUIN_TAR_FILE"
     sudo tar -cf "$NAILGUIN_TAR_FILE" *
-
-    cd $TMP_FOLDER
-    rm -f "$WHOLE_TAR_FILE"
-    sudo tar -cf "$WHOLE_TAR_FILE" *
     popd
-
-    rm -f "$NEW_DOCKER_IMAGE"
-    lrzip "$WHOLE_TAR_FILE" -o "$NEW_DOCKER_IMAGE"
 }
 
 function clean() {
@@ -84,27 +89,30 @@ function prepare_dirs() {
 }
 
 function main() {
-    prepare_dirs
+    # prepare_dirs
 
-    sudo mount -o loop "$ISO_PATH" "$ISO_MNT_FOLDER"
+    # sudo mount -o loop "$ISO_PATH" "$ISO_MNT_FOLDER"
     
-    lrzuntar -O "$TMP_FOLDER" "$DOCKER_IMAGE" 
+    # lrzuntar -O "$TMP_FOLDER" "$DOCKER_IMAGE" 
 
-    using_docker_file "$NAILGUIN_TAR_FILE" "$SCRIPT_FOLDER"
+    # using_docker_file "$NAILGUIN_TAR_FILE" "$SCRIPT_FOLDER"
 
-    #### REBUILD ISO
+    # repack_containers_archive
 
-    ## BOOT_FILES=-b "$WHOLE_ISO_TMP/isolinux/isolinux.bin" -c "$WHOLE_ISO_TMP/isolinux/boot.cat"
-    ## OPTS=-no-emul-boot -boot-load-size 4 -boot-info-table -J -R -V "FUEL_CERT_ISO"
-    ## mkisofs -o "$TMP_FOLDER/fuel_cert_iso.iso" $BOOT_FILES $OPTS "$WHOLE_ISO_TMP"
+    # cp -r "$ISO_MNT_FOLDER" "$WHOLE_ISO_TMP"
 
-    cp -r $ISO_MNT_FOLDER/* "$WHOLE_ISO_TMP"
+    SUBFOLDER=`basename $ISO_MNT_FOLDER`
+    WHOLE_ISO_TMP="$WHOLE_ISO_TMP/$SUBFOLDER"
     sudo rm -rf "$WHOLE_ISO_TMP/rr_moved"
-    
+
+    LOCAL_IMAGES_ARCHIVE="$WHOLE_ISO_TMP/docker/images/fuel-images.tar.lrz"
+    sudo rm -f "$LOCAL_IMAGES_ARCHIVE"
+    sudo cp "$NEW_DOCKER_IMAGE" "$LOCAL_IMAGES_ARCHIVE"
+
     sudo mkisofs -r -V "FUEL_CERT_ISO" -J -T -R -b isolinux/isolinux.bin \
                 -no-emul-boot -boot-load-size 4 -boot-info-table \
                 -o "$TMP_FOLDER/fuel_cert_iso.iso" "$WHOLE_ISO_TMP"
-    echo "Results are stored in $$TMP_FOLDER/fuel_cert_iso.iso"
+    echo "Results are stored in $TMP_FOLDER/fuel_cert_iso.iso"
 }
 
 main

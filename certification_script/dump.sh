@@ -1,22 +1,35 @@
 #!/bin/sh
+set -x
+set -e 
+set -o pipefail
 
-DEST=/tmp/certification_script
-CONT_PATH=/opt/certification_script
-
-function copy_code_from_local() {
-    ssh root@172.18.201.16 "rm -rf $DEST"
-    scp -r . root@72.18.201.16:$DEST
+function on_fuel() {
+	cd /tmp
+	NAILGUN_CONT_ID=`docker ps | grep nailgun | awk '{print $1}'`
+	rm -rf /tmp/certification_script
+	docker cp $NAILGUN_CONT_ID:/usr/lib/python2.6/site-packages/certification_script /tmp
+	export PYTHONPATH="$PYTHONPATH:/tmp"
+	python certification_script/main.py -s AUTO
+	python certification_script/main.py -r
 }
 
-function copy_code_from_container() {
-    ssh root@172.18.201.16 "docker cp fuel-core-5.0.1-nailgun:$CONT_PATH $DEST"
-    scp -r . root@72.18.201.16:$DEST
+function copy_code_and_run() {
+	echo "set timeout 120" > /tmp/sert.exp
+	echo "spawn scp $0 root@10.20.0.2:/tmp" >> /tmp/sert.exp
+	echo 'expect "password:"' >> /tmp/sert.exp
+	echo "send r00tme\n;" >> /tmp/sert.exp
+	echo "interact" >> /tmp/sert.exp
+	echo 'spawn ssh root@10.20.0.2 bash /tmp/dump.sh' >> /tmp/sert.exp
+	echo 'expect "password:"' >> /tmp/sert.exp
+	echo "send r00tme\n;" >> /tmp/sert.exp
+	echo "interact" >> /tmp/sert.exp
+	expect /tmp/sert.exp
+	rm /tmp/sert.exp
 }
 
-function dump_cluster() {
-    ssh root@172.18.201.16 "cd $DEST/certification_script/certification_script && python main.py -s AUTO"
-}
+if [ "$HOSTNAME" == "fuel.domain.tld" ] ; then
+	on_fuel
+else
+	copy_code_and_run
+fi
 
-function run_tests() {
-    ssh root@172.18.201.16 "cd $DEST/certification_script/certification_script && python main.py -r"
-}

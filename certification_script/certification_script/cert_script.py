@@ -15,9 +15,6 @@ import fuel_rest_api
 from tests import base
 
 
-GB = 1024 * 1024 * 1024
-
-
 logger = None
 
 
@@ -27,12 +24,17 @@ def set_logger(log):
 
 
 def find_node_by_requirements(nodes, requirements):
-    min_cpu = requirements.get('cpu_count_min') or 0
-    max_cpu = requirements.get('cpu_count_max') or 1000
-    min_hd = requirements.get('hd_size_min') or 0
-    max_hd = requirements.get('hd_size_max') or 10000
-    min_mem = requirements.get('mem_count_min') or 0
-    max_mem = requirements.get('mem_count_max') or 10000
+    GB = 1024 * 1024 * 1024
+    TOO_LARGE_NUMBER = 1000 ** 3
+    
+    min_cpu = requirements.get('cpu_count_min', 0)
+    max_cpu = requirements.get('cpu_count_max', TOO_LARGE_NUMBER)
+    
+    min_hd = requirements.get('hd_size_min', 0)
+    max_hd = requirements.get('hd_size_max', TOO_LARGE_NUMBER)
+
+    min_mem = requirements.get('mem_count_min', 0)
+    max_mem = requirements.get('mem_count_max', TOO_LARGE_NUMBER)
 
     def hd_valid(hd):
         return max_hd >= hd >= min_hd
@@ -45,7 +47,7 @@ def find_node_by_requirements(nodes, requirements):
 
     for node in nodes:
         cpu = node.meta['cpu']['total']
-        mem = node.meta['memory']['total']
+        mem = node.meta['memory']['total'] / GB
         hd = sum(disk['size'] for disk in node.meta['disks']) / GB
 
         if cpu_valid(cpu) and hd_valid(hd) and mem_valid(mem):
@@ -65,9 +67,7 @@ def match_nodes(conn, nodes_descriptions, timeout):
         free_nodes = [node for node in fuel_rest_api.get_all_nodes(conn)
                       if node.cluster is None]
 
-        if len(free_nodes) < required_nodes_count:
-            time.sleep(1)
-        else:
+        if len(free_nodes) > required_nodes_count:
             node_mac_mapping = dict([(node.mac.upper(), node) for
                                      node in free_nodes])
             for node_description in nodes_descriptions.values():
@@ -84,9 +84,14 @@ def match_nodes(conn, nodes_descriptions, timeout):
                     found_node = free_nodes[0]
 
                 if found_node is None:
-                    msg = "Can't found node for requirements: {}, {}"
-                    msg = msg.format(node_mac,
-                                     node_description.get('requirements'))
+                    if node_mac is not None:
+                        msg_templ = "Can't found node for requirements: mac={}, {}"
+                        msg = msg_templ.format(node_mac,
+                                         node_description.get('requirements'))
+                    else:
+                        msg_templ = "Can't found node for requirements: {}"
+                        msg = msg_templ.format(node_description.get('requirements'))
+
                     logger.error(msg)
                     break
 
@@ -94,6 +99,7 @@ def match_nodes(conn, nodes_descriptions, timeout):
                 result.append((node_description, found_node))
             else:
                 return result
+        time.sleep(1)
 
     raise Exception('Timeout exception')
 

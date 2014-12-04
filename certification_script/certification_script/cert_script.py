@@ -67,7 +67,7 @@ def match_nodes(conn, nodes_descriptions, timeout):
         free_nodes = [node for node in fuel_rest_api.get_all_nodes(conn)
                       if node.cluster is None]
 
-        if len(free_nodes) > required_nodes_count:
+        if len(free_nodes) >= required_nodes_count:
             node_mac_mapping = dict([(node.mac.upper(), node) for
                                      node in free_nodes])
             for node_description in nodes_descriptions.values():

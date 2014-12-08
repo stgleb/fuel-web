@@ -410,9 +410,11 @@ class Cluster(RestObj):
         parameters = configuration['networking_parameters']
 
         if net_descriptions.get('networks'):
-            net_mapping = {}
-            for net_description in net_descriptions['networks']:
-                net_mapping[net_description["name"]] = net_description
+            # net_mapping = {}
+            # for net_description in net_descriptions['networks']:
+            #     print net_description + "!!!!!!!!111one"
+            #     net_mapping[net_descriptions[net_description["name"]]] = net_descriptions
+            net_mapping = net_descriptions['networks']
 
             print "!!!!!!!!!!!!!!!!!!"
             pprint.pprint(net_mapping)

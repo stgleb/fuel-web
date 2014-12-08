@@ -213,7 +213,7 @@ def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True, add
                 wd(lambda co: not co.check_exists())(cluster_obj)
 
     c = deploy_cluster(conn, cluster, additional_cfg)
-    nodes = [fuel_rest_api.Node(conn, **data) for data in c.get_nodes()]
+    nodes = list(c.get_nodes())
     c.nodes = fuel_rest_api.NodeList(nodes)
     try:
         yield c

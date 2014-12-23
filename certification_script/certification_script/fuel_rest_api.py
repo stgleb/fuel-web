@@ -39,7 +39,7 @@ class Urllib2HTTP(object):
             self.root_url = root_url
 
         self.headers = headers if headers is not None else {}
-        self.echo = echo
+        self.echo = True
 
     def do(self, method, path, params=None):
         if path.startswith('/'):
@@ -55,6 +55,7 @@ class Urllib2HTTP(object):
 
         if self.echo:
             logger.info("HTTP: {} {}".format(method.upper(), url))
+            logger.info("DATA: %s" % data_json)
 
         request = urllib2.Request(url,
                                   data=data_json,

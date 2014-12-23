@@ -3,10 +3,10 @@ import pprint
 import os.path
 import logging.config
 from optparse import OptionParser
+import urlparse
 
 import yaml
-import fuel_rest_api
-import cert_script as cs
+from fuelclient import client
 
 sys.path.insert(0, '../lib/requests')
 
@@ -73,17 +73,17 @@ def merge_config(config, command_line):
     config['fuelurl'] = command_line['fuelurl']
 
 
-def setup_logger(config):
+def setup_logger(cs, config):
     with open(config['log_settings']) as f:
         cfg = yaml.load(f)
 
     logging.config.dictConfig(cfg)
 
     cs.set_logger(logging.getLogger('clogger'))
-    fuel_rest_api.set_logger(logging.getLogger('clogger'))
+    # fuel_rest_api.set_logger(logging.getLogger('clogger'))
 
 
-def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True,
+def deploy_single_cluster(cs, args, clusters, logger, auto_delete=True,
                           additional_cfg=None):
     cluster_name_or_file = args['deploy_only']
 
@@ -103,9 +103,9 @@ def deploy_single_cluster(args, clusters, conn, logger, auto_delete=True,
             return 1
 
     if auto_delete:
-        cs.delete_if_exists(conn, cluster['name'])
+        cs.delete_if_exists(cluster['name'])
 
-    cs.deploy_cluster(conn, cluster, additional_cfg=additional_cfg)
+    cs.deploy_cluster(cluster, additional_cfg=additional_cfg)
     return 0
 
 
@@ -115,23 +115,21 @@ def main():
     config = parse_config(args['config'])
     merge_config(config, args)
     cfg_fname = config["gui_config_file"]
-    setup_logger(config)
-    logger = logging.getLogger('clogger')
     creds = args.get('creds')
+    admin_node_ip = urlparse.urlparse(config['fuelurl']).hostname
+    conn_dict = {"SERVER_ADDRESS": admin_node_ip}
     if creds:
-        admin_node_ip = config['fuelurl'].split('/')[-1].split(':')[0]
         keyst_creds = dict([pair.split("=") for pair in creds.split(",")
                             if pair and "=" in pair])
-        required_keys = ['username', 'password', 'tenant_name']
+        required_keys = ['username', 'password']
         if keyst_creds and all([key in keyst_creds for key in required_keys]):
-            conn = fuel_rest_api.KeystoneAuth(config['fuelurl'],
-                                              creds=keyst_creds,
-                                              echo=True,
-                                              admin_node_ip=admin_node_ip)
-        else:
-            raise Exception("Invalid auth credentials")
-    else:
-        conn = fuel_rest_api.Urllib2HTTP(config['fuelurl'], echo=True)
+            conn_dict.update({"KEYSTONE_USER": keyst_creds['username'],
+                              "KEYSTONE_PASSWORD": keyst_creds['password']})
+    client.connect(config=conn_dict)
+    import cert_script as cs
+    from fuelclient.objects import Environment
+    setup_logger(cs, config)
+    logger = logging.getLogger('clogger')
 
     test_run_timeout = config.get('testrun_timeout', 3600)
 
@@ -143,10 +141,10 @@ def main():
     clusters_to_delete = args.get('delete')
     if clusters_to_delete:
         if clusters_to_delete == "ALL":
-            cs.delete_all_clusters(conn)
+            cs.delete_all_clusters()
         else:
             for cl_name in clusters_to_delete.split(','):
-                cs.delete_if_exists(conn, cl_name)
+                cs.delete_if_exists(cl_name)
         return
 
     saved_cfg = None
@@ -154,12 +152,12 @@ def main():
         saved_cfg = cs.load_config(cfg_fname)
 
     if args.get('deploy_only') is not None:
-        return deploy_single_cluster(args, clusters, conn, logger,
+        return deploy_single_cluster(cs, args, clusters, logger,
                                      additional_cfg=saved_cfg)
 
     save_cluster_name = args.get('save_config')
     if save_cluster_name is not None:
-        clusters = list(fuel_rest_api.get_all_clusters(conn))
+        clusters = list(Environment.get_all())
         if save_cluster_name == "AUTO":
             if len(clusters) > 1:
                 print "Can't select cluster - more then one available"
@@ -168,7 +166,7 @@ def main():
 
         for cluster in clusters:
             if cluster.name == save_cluster_name:
-                cfg = cs.load_config_from_fuel(conn, cluster.id)
+                cfg = cs.load_config_from_fuel(cluster.id)
                 cs.store_config(cfg, cfg_fname)
         return 0
 
@@ -177,15 +175,12 @@ def main():
         cluster = clusters[test_cfg['cluster']]
 
         tests_to_run = test_cfg['suits']
-
-        cont_man = cs.make_cluster(conn,
-                                   cluster,
+        cont_man = cs.make_cluster(cluster,
                                    auto_delete=True,
                                    additional_cfg=saved_cfg)
 
         with cont_man as cluster_id:
-            results = cs.run_all_tests(conn,
-                                       cluster_id,
+            results = cs.run_all_tests(cluster_id,
                                        test_run_timeout,
                                        tests_to_run)
 

@@ -11,16 +11,45 @@ from email.mime.text import MIMEText
 
 import yaml
 
-import fuel_rest_api
+# import fuel_rest_api
+from fuelclient import client
+from fuelclient.objects import Environment
+from fuelclient.objects import Node
+from fuelclient.objects import NodeCollection
 from tests import base
 
 
 logger = None
 
 
+def set_client(host):
+    client.connect(config={"SERVER_ADDRESS": host})
+
+
 def set_logger(log):
     global logger
     logger = log
+
+sections = {
+    'sahara': 'additional_components',
+    'murano': 'additional_components',
+    'ceilometer': 'additional_components',
+    'volumes_ceph': 'storage',
+    'images_ceph': 'storage',
+    'ephemeral_ceph': 'storage',
+    'objects_ceph': 'storage',
+    'osd_pool_size': 'storage',
+    'volumes_lvm': 'storage',
+    'volumes_vmdk': 'storage',
+    'tenant': 'access',
+    'password': 'access',
+    'user': 'access',
+    'vc_password': 'vcenter',
+    'cluster': 'vcenter',
+    'host_ip': 'vcenter',
+    'vc_user': 'vcenter',
+    'use_vcenter': 'vcenter',
+}
 
 
 def find_node_by_requirements(nodes, requirements):
@@ -46,8 +75,8 @@ def find_node_by_requirements(nodes, requirements):
         return max_mem >= mem >= min_mem
 
     for node in nodes:
-        cpu = node.meta['cpu']['total']
-        mem = node.meta['memory']['total'] / GB
+        cpu = node.data['meta']['cpu']['total']
+        mem = node.data['meta']['memory']['total'] / GB
         hd = sum(disk['size'] for disk in node.meta['disks']) / GB
 
         if cpu_valid(cpu) and hd_valid(hd) and mem_valid(mem):
@@ -55,7 +84,7 @@ def find_node_by_requirements(nodes, requirements):
     return None
 
 
-def match_nodes(conn, nodes_descriptions, timeout):
+def match_nodes(nodes_descriptions, timeout):
     required_nodes_count = len(nodes_descriptions)
     msg = "Waiting for nodes {} to be discovered...".\
         format(required_nodes_count)
@@ -64,11 +93,12 @@ def match_nodes(conn, nodes_descriptions, timeout):
     result = []
 
     for _ in range(timeout):
-        free_nodes = [node for node in fuel_rest_api.get_all_nodes(conn)
-                      if node.cluster is None]
+        free_nodes = [node for node in NodeCollection.get_all()
+                      if not node.env_id]
 
         if len(free_nodes) >= required_nodes_count:
-            node_mac_mapping = dict([(node.mac.upper(), node) for
+            import ipdb;ipdb.set_trace()
+            node_mac_mapping = dict([(node.data['mac'].upper(), node) for
                                      node in free_nodes])
             for node_description in nodes_descriptions.values():
                 found_node = None
@@ -115,12 +145,12 @@ def find_test_classes():
     return test_classes
 
 
-def run_all_tests(conn, cluster_id, timeout, tests_to_run):
+def run_all_tests(cluster_id, timeout, tests_to_run):
     test_classes = find_test_classes()
     print test_classes
     results = []
     for test_class in test_classes:
-        test_class_inst = test_class(conn, cluster_id, timeout)
+        test_class_inst = test_class(cluster_id, timeout)
         available_tests = test_class_inst.get_available_tests()
         results.extend(test_class_inst.run_tests(
             set(available_tests) & set(tests_to_run)))
@@ -162,9 +192,26 @@ def load_all_clusters(path):
     return res
 
 
-def deploy_cluster(conn, cluster_desc, additional_cfg=None):
-    cluster = fuel_rest_api.create_empty_cluster(conn, cluster_desc)
+def deploy_cluster(cluster_desc, additional_cfg=None, debug_mode=False):
+    if cluster_desc['settings']['net_provider'] == "nova_network":
+        net_provider = "nova"
+    else:
+        net_provider = cluster_desc['settings']['net_provider']
+    cluster = Environment.create(cluster_desc['name'],
+                                 cluster_desc['release'],
+                                 net_provider,
+                                 cluster_desc.get('net_segment_type'))
 
+    attributes = cluster.get_settings_data()
+    settings = cluster_desc['settings']
+    ed_attrs = attributes['editable']
+    for option, value in settings.items():
+        if option in sections:
+            attr_val_dict = ed_attrs[sections[option]]
+            attr_val_dict['value'] = value
+
+    ed_attrs['common']['debug']['value'] = debug_mode
+    cluster.set_settings_data(attributes)
     if 'network_configuration' in cluster_desc:
         cluster.set_networks(cluster_desc['network_configuration'])
 
@@ -172,7 +219,7 @@ def deploy_cluster(conn, cluster_desc, additional_cfg=None):
     deploy_timeout = cluster_desc.get('DEPLOY_TIMEOUT', 3600)
     nodes_info = cluster_desc['nodes']
 
-    for node_desc, node in match_nodes(conn, nodes_info,
+    for node_desc, node in match_nodes(nodes_info,
                                        nodes_discover_timeout):
         if 'interfaces' in node_desc:
             cluster.add_node(node, node_desc['roles'], node_desc['interfaces'])
@@ -188,33 +235,58 @@ def deploy_cluster(conn, cluster_desc, additional_cfg=None):
     return cluster
 
 
-def delete_if_exists(conn, name):
-    for cluster_obj in fuel_rest_api.get_all_clusters(conn):
+def with_timeout(tout, message):
+    def closure(func):
+        @functools.wraps(func)
+        def closure2(*dt, **mp):
+            ctime = time.time()
+            etime = ctime + tout
+
+            while ctime < etime:
+                if func(*dt, **mp):
+                    return
+                sleep_time = ctime + 1 - time.time()
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                ctime = time.time()
+            raise RuntimeError("Timeout during " + message)
+        return closure2
+    return closure
+
+
+def check_exists(cluster):
+    try:
+        cluster.status()
+    except Exception:
+        return True
+
+
+def delete_if_exists(name):
+    for cluster_obj in Environment.get_all():
         if cluster_obj.name == name:
             cluster_obj.delete()
-            wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
-            wd(lambda co: not co.check_exists())(cluster_obj)
+            wd = with_timeout(60, "Wait cluster deleted")
+            wd(lambda co: not check_exists(co))(cluster_obj)
 
 
-def delete_all_clusters(conn):
-    for cluster_obj in fuel_rest_api.get_all_clusters(conn):
+def delete_all_clusters():
+    for cluster_obj in Environment.get_all():
         cluster_obj.delete()
-        wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
+        wd = with_timeout(60, "Wait cluster deleted")
         wd(lambda co: not co.check_exists())(cluster_obj)
 
 
 @contextlib.contextmanager
-def make_cluster(conn, cluster, auto_delete=False, debug=False, delete=True, additional_cfg=None):
+def make_cluster(cluster, auto_delete=False, debug=False, delete=True, additional_cfg=None):
     if auto_delete:
-        for cluster_obj in fuel_rest_api.get_all_clusters(conn):
-            if cluster_obj.name == cluster['name']:
+        for cluster_obj in Environment.get_all():
+            if cluster_obj._data['name'] == cluster['name']:
                 cluster_obj.delete()
-                wd = fuel_rest_api.with_timeout(60, "Wait cluster deleted")
-                wd(lambda co: not co.check_exists())(cluster_obj)
+                wd = with_timeout(60, "Wait cluster deleted")
+                wd(lambda co: not check_exists(cluster_obj))(cluster_obj)
 
-    c = deploy_cluster(conn, cluster, additional_cfg)
+    c = deploy_cluster(cluster, additional_cfg)
     nodes = list(c.get_nodes())
-    c.nodes = fuel_rest_api.NodeList(nodes)
     try:
         yield c
     except Exception as _:
@@ -232,8 +304,7 @@ def with_cluster(template_name, tear_down=True, **params):
         def wrapper(*args, **kwargs):
             cluster_desc = args[0].templates.get(template_name)
             cluster_desc.update(params)
-            conn = args[0].conn
-            with make_cluster(conn, cluster_desc, delete=tear_down) as cluster:
+            with make_cluster(cluster_desc, delete=tear_down) as cluster:
                 arg_spec = inspect.getargspec(f)
                 if 'cluster_id' in arg_spec.args:
                     kwargs['cluster_id'] = cluster.id
@@ -260,8 +331,8 @@ def encode_recursivelly(root):
         return to_utf8(root)
 
 
-def load_config_from_fuel(conn, cluster_id):
-    cluster = fuel_rest_api.reflect_cluster(conn, cluster_id)
+def load_config_from_fuel(cluster_id):
+    cluster = Environment(cluster_id)
     status = {}
     c = cluster.get_status()
 
@@ -315,8 +386,8 @@ def update_cluster(cluster, cfg):
     cfg_for_mac = {val['main_mac']: val for name, val in cfg['nodes'].items()}
 
     for node in cluster.get_nodes():
-        if node.mac in cfg_for_mac:
-            node_cfg = cfg_for_mac[node.mac]
+        if node.data['mac'] in cfg_for_mac:
+            node_cfg = cfg_for_mac[node.data['mac']]
 
             mapping = {}
             for net_descr in node_cfg['network_data']:

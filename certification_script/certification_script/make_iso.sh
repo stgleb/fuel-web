@@ -3,16 +3,25 @@ set -x
 set -e 
 set -o pipefail
 
-ISO_PATH=/media/data/fuel-5.1.1-28-2014-11-20_21-01-00.iso
-TMP_FOLDER=/media/fuel_remake_iso
+# ISO_PATH=/media/data/fuel-5.1.1-28-2014-11-20_21-01-00.iso
+# TMP_FOLDER=/media/fuel_remake_iso
 
-CERT_SCRIPT_GIT_URL=
-TEST_GIT_URL=
-CERT_PATH_ORIGIN=~/workspace/fsert/certification_script/certification_script
-TEST_PATH_ORIGIN=~/workspace/fsert/fuelweb_tests
+ISO_PATH=$1
+TMP_FOLDER=$2
 
-CERT_PATH="$TMP_FOLDER/cert_script_git"
-TEST_PATH="$TMP_FOLDER/tests_git"
+CERT_SCRIPT_GIT_URL=https://github.com/stgleb/fuel-web.git
+TEST_GIT_URL=https://github.com/stgleb/fuel-main
+# CERT_PATH_ORIGIN=~/workspace/fsert/certification_script/certification_script
+# TEST_PATH_ORIGIN=~/workspace/fsert/fuel-main/fuelweb_test/tests
+
+CERT_PATH_GIT="$TMP_FOLDER/cert_script_git"
+TEST_PATH_GIT="$TMP_FOLDER/tests_git"
+
+CERT_BRANCH="sertification-script"
+TEST_BRANCH="certification"
+
+CERT_PATH="$TMP_FOLDER/certification_script"
+TEST_PATH="$TMP_FOLDER/fuelweb_tests"
 ISO_MNT_FOLDER="$TMP_FOLDER/old_iso_mount"
 DOCKER_IMAGES_FOLDER="$TMP_FOLDER/container_images"
 DOCKER_IMAGE="$ISO_MNT_FOLDER/docker/images/fuel-images.tar.lrz"
@@ -26,6 +35,7 @@ WHOLE_ISO_TMP="$TMP_FOLDER/image"
 SCRIPTS_TMP_FOLDER_FOR_DOCKER="$TMP_FOLDER/files"
 RESULT_ISO="$TMP_FOLDER/fuel_cert_iso.iso"
 MIN_FREE_SPACE=13728640
+DEVOPS_GIT_FOLDER="$TMP_FOLDER/devops_git"
 
 function remote_old_nailgun_container() {
     set +e 
@@ -93,16 +103,26 @@ function checkout_code() {
     set +e 
     rm -rf "$CERT_PATH"
     rm -rf "$TEST_PATH"
+    rm -rf "$CERT_PATH_GIT"
+    rm -rf "$TEST_PATH_GIT"
+    rm -rf "$DEVOPS_GIT_FOLDER"
     set -e 
 
     mkdir -p "$CERT_PATH"
     mkdir -p "$TEST_PATH"
+    mkdir -p "$CERT_PATH_GIT"
+    mkdir -p "$TEST_PATH_GIT"
+    mkdir -p "$DEVOPS_GIT_FOLDER"
+
+    git clone -b "$CERT_BRANCH" --single-branch "$CERT_SCRIPT_GIT_URL" "$CERT_PATH_GIT"
+    git clone -b "$TEST_BRANCH" --single-branch "$TEST_GIT_URL" "$TEST_PATH_GIT"
+    git clone https://github.com/stackforge/fuel-devops.git "$DEVOPS_GIT_FOLDER"
+
+    CERT_PATH_ORIGIN="$CERT_PATH_GIT/certification_script"
+    TEST_PATH_ORIGIN="$TEST_PATH_GIT/fuelweb_test"
 
     cp -r "$CERT_PATH_ORIGIN/." "$CERT_PATH"
     cp -r "$TEST_PATH_ORIGIN/." "$TEST_PATH"
-
-    # git clone "$CERT_SCRIPT_GIT_URL" "$CERT_PATH"
-    # git clone "$TEST_GIT_URL" "$TEST_PATH"
 }
 
 function repack_containers_archive() {
@@ -122,14 +142,28 @@ function using_docker_file() {
 
     CERT_PATH_DIR_NAME=`basename $CERT_PATH`
     TEST_PATH_DIR_NAME=`basename $TEST_PATH`
+    DEVOPS_DIR_NAME=$(basename $DEVOPS_GIT_FOLDER)
 
     cp -r "$CERT_PATH" "$SCRIPTS_TMP_FOLDER_FOR_DOCKER"
     cp -r "$TEST_PATH" "$SCRIPTS_TMP_FOLDER_FOR_DOCKER"
+    cp -r "$DEVOPS_GIT_FOLDER" "$SCRIPTS_TMP_FOLDER_FOR_DOCKER"
 
     DOCKERFILE=$SCRIPTS_TMP_FOLDER_FOR_DOCKER/Dockerfile
     echo "FROM $NAILGUN_IMAGE_NAME" > $DOCKERFILE
-    echo "COPY $CERT_PATH_DIR_NAME /usr/lib/python2.6/site-packages" >> $DOCKERFILE
-    echo "COPY $TEST_PATH_DIR_NAME /usr/lib/python2.6/site-packages" >> $DOCKERFILE
+    
+
+    REQ_FILE="/usr/lib/python2.6/site-packages/$TEST_PATH_DIR_NAME/requirements.txt"
+
+    echo "COPY $CERT_PATH_DIR_NAME /usr/lib/python2.6/site-packages/$CERT_PATH_DIR_NAME" >> $DOCKERFILE
+    echo "COPY $TEST_PATH_DIR_NAME /usr/lib/python2.6/site-packages/$TEST_PATH_DIR_NAME" >> $DOCKERFILE
+    echo "COPY $DEVOPS_DIR_NAME /tmp/$DEVOPS_DIR_NAME" >> $DOCKERFILE
+    echo "WORKDIR /tmp/$DEVOPS_DIR_NAME" >> $DOCKERFILE
+    echo "RUN python setup.py install" >> $DOCKERFILE
+    echo "RUN sed -i '/git.*/d' $REQ_FILE" >> $DOCKERFILE
+    echo "RUN pip install -r $REQ_FILE" >> $DOCKERFILE
+    echo "WORKDIR /tmp" >> $DOCKERFILE
+    echo "RUN rm -rf $DEVOPS_DIR_NAME" >> $DOCKERFILE
+
 
     docker build --force-rm=true -t $NAILGUN_IMAGE_NAME $SCRIPTS_TMP_FOLDER_FOR_DOCKER
     docker save $NAILGUN_IMAGE_NAME > $NAILGUIN_TAR_FILE
@@ -144,6 +178,8 @@ function remove_dirs() {
     sudo rm -rf "$ISO_MNT_FOLDER"
     sudo rm -rf "$CERT_PATH"
     sudo rm -rf "$TEST_PATH"
+    sudo rm -rf "$CERT_PATH_GIT"
+    sudo rm -rf "$TEST_PATH_GIT"
 }
 
 function prepare_dirs() {
@@ -171,6 +207,7 @@ function remake_iso() {
 }
 
 function main() {
+    remove_dirs
     remote_old_nailgun_container
     prepare_dirs
     test_environment
